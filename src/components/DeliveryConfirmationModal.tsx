@@ -52,7 +52,8 @@ export const DeliveryConfirmationModal: React.FC<DeliveryConfirmationModalProps>
       });
       const autoOt = calculateOvertimeMinutes(
         order.arrivalTime || nowTime,
-        regularShiftEndTime
+        regularShiftEndTime,
+        order.departureTime || '08:00'
       );
       setDriverOvertimeMinutes(order.driverOvertimeMinutes ?? autoOt);
       setHelperOvertimeMinutes(
@@ -273,7 +274,7 @@ export const DeliveryConfirmationModal: React.FC<DeliveryConfirmationModalProps>
                 <span>Medición de Hora Extra (Chofer y Ayudante)</span>
               </span>
               <span className="text-[10px] text-slate-400">
-                Fin turno: <strong className="text-white font-mono">{regularShiftEndTime}</strong>
+                Horario: <strong className="text-emerald-400 font-mono">8:00 AM-12:00 PM | 2:00 PM-6:00 PM</strong>
               </span>
             </div>
 

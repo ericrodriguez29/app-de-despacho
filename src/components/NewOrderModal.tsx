@@ -108,10 +108,19 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({
 
   const totalUnitsInOrder = orderItems.reduce((acc, it) => acc + (it.unitsCount || 0), 0);
 
+  const handleDepartureTimeChange = (newDepTime: string) => {
+    setDepartureTime(newDepTime);
+    if (arrivalTime) {
+      const autoOt = calculateOvertimeMinutes(arrivalTime, regularShiftEndTime, newDepTime);
+      setDriverOvertimeMinutes(autoOt);
+      setHelperOvertimeMinutes(helper && helper !== 'Sin Ayudante' ? autoOt : 0);
+    }
+  };
+
   const handleArrivalTimeChange = (newArrTime: string) => {
     setArrivalTime(newArrTime);
     if (newArrTime) {
-      const autoOt = calculateOvertimeMinutes(newArrTime, regularShiftEndTime);
+      const autoOt = calculateOvertimeMinutes(newArrTime, regularShiftEndTime, departureTime);
       setDriverOvertimeMinutes(autoOt);
       setHelperOvertimeMinutes(helper && helper !== 'Sin Ayudante' ? autoOt : 0);
     }
@@ -593,7 +602,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({
                 <span>Hora de Salida / Hora de Llegada & Medición de Horas Extras</span>
               </label>
               <span className="text-[11px] text-slate-400">
-                Fin de jornada normal: <strong className="text-white font-mono">{regularShiftEndTime}</strong>
+                Horario laboral: <strong className="text-emerald-400 font-mono">8:00 AM - 12:00 PM y 2:00 PM - 6:00 PM</strong>
               </span>
             </div>
 
@@ -603,7 +612,7 @@ export const NewOrderModal: React.FC<NewOrderModalProps> = ({
                 <input
                   type="time"
                   value={departureTime}
-                  onChange={(e) => setDepartureTime(e.target.value)}
+                  onChange={(e) => handleDepartureTimeChange(e.target.value)}
                   className="w-full bg-slate-900 text-sky-300 font-mono font-bold p-2 rounded-xl border border-slate-700 focus:outline-none focus:border-sky-500"
                 />
               </div>

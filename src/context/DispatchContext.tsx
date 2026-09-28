@@ -257,7 +257,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [overtimeLogs, setOvertimeLogs] = useState<OvertimeLog[]>(() => {
-    const saved = localStorage.getItem('dispatch_overtime_v5');
+    const saved = localStorage.getItem('dispatch_overtime_v6');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -269,7 +269,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [regularShiftEndTime, setRegularShiftEndTime] = useState<string>(() => {
-    return localStorage.getItem('dispatch_shift_end_v5') || '17:00';
+    return localStorage.getItem('dispatch_shift_end_v6') || '18:00';
   });
 
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
@@ -325,11 +325,11 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [helpers]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_overtime_v5', JSON.stringify(overtimeLogs));
+    localStorage.setItem('dispatch_overtime_v6', JSON.stringify(overtimeLogs));
   }, [overtimeLogs]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_shift_end_v5', regularShiftEndTime);
+    localStorage.setItem('dispatch_shift_end_v6', regularShiftEndTime);
   }, [regularShiftEndTime]);
 
   const getStatusLabel = (status: OrderStatus): string => {
@@ -436,9 +436,13 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             } else if (dispatchedAt) {
               unloadingDurationMinutes = 20;
             }
-            // If overtime wasn't explicitly set, calculate from arrivalTime vs regularShiftEndTime
+            // If overtime wasn't explicitly set, calculate from departureTime & arrivalTime using 8:00-12:00 & 14:00-18:00
             if (driverOvertimeMinutes === undefined && arrivalTime) {
-              const autoOt = calculateOvertimeMinutes(arrivalTime, regularShiftEndTime);
+              const autoOt = calculateOvertimeMinutes(
+                arrivalTime,
+                regularShiftEndTime,
+                departureTime
+              );
               if (autoOt > 0) {
                 driverOvertimeMinutes = autoOt;
                 helperOvertimeMinutes =
@@ -586,8 +590,9 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 
       const targetRoute = routes.find((r) => r.id === routeId);
-      const shiftEnd = targetRoute?.shiftEndTime || regularShiftEndTime || '17:00';
-      const autoOtMins = calculateOvertimeMinutes(timeStr, shiftEnd);
+      const shiftEnd = targetRoute?.shiftEndTime || regularShiftEndTime || '18:00';
+      const depTime = targetRoute?.actualDeparture || targetRoute?.scheduledDeparture || '08:00';
+      const autoOtMins = calculateOvertimeMinutes(timeStr, shiftEnd, depTime);
 
       setRoutes((prev) =>
         prev.map((r) => {
@@ -929,7 +934,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     localStorage.removeItem('dispatch_aluzinc_colors_v6');
     localStorage.removeItem('dispatch_drivers_v5');
     localStorage.removeItem('dispatch_helpers_v5');
-    localStorage.removeItem('dispatch_overtime_v5');
+    localStorage.removeItem('dispatch_overtime_v6');
   }, []);
 
   const clearAllToZero = useCallback(
@@ -937,7 +942,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setOrders([]);
       setOvertimeLogs([]);
       localStorage.setItem('dispatch_orders_v6', JSON.stringify([]));
-      localStorage.setItem('dispatch_overtime_v5', JSON.stringify([]));
+      localStorage.setItem('dispatch_overtime_v6', JSON.stringify([]));
 
       if (options?.resetRoutes) {
         const todayStr = new Date().toISOString().split('T')[0];

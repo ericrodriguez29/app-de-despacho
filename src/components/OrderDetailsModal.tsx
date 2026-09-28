@@ -83,10 +83,19 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
     onClose();
   };
 
+  const handleDepartureChange = (val: string) => {
+    setDepartureTime(val);
+    if (arrivalTime) {
+      const autoOt = calculateOvertimeMinutes(arrivalTime, regularShiftEndTime, val);
+      setDriverOvertimeMinutes(autoOt);
+      setHelperOvertimeMinutes(helper && helper !== 'Sin Ayudante' ? autoOt : 0);
+    }
+  };
+
   const handleArrivalChange = (val: string) => {
     setArrivalTime(val);
     if (val) {
-      const autoOt = calculateOvertimeMinutes(val, regularShiftEndTime);
+      const autoOt = calculateOvertimeMinutes(val, regularShiftEndTime, departureTime);
       setDriverOvertimeMinutes(autoOt);
       setHelperOvertimeMinutes(helper && helper !== 'Sin Ayudante' ? autoOt : 0);
     }
@@ -279,7 +288,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 <span>Control de Horarios y Hora Extra (Chofer y Ayudante)</span>
               </span>
               <span className="text-[10px] text-slate-400">
-                Fin turno normal: <strong className="text-white font-mono">{regularShiftEndTime}</strong>
+                Horario: <strong className="text-emerald-400 font-mono">8:00 AM-12:00 PM | 2:00 PM-6:00 PM</strong>
               </span>
             </div>
 
@@ -323,7 +332,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
                 <input
                   type="time"
                   value={departureTime}
-                  onChange={(e) => setDepartureTime(e.target.value)}
+                  onChange={(e) => handleDepartureChange(e.target.value)}
                   className="w-full bg-slate-900 text-sky-300 font-mono font-bold p-2 rounded-xl border border-slate-700 text-xs"
                 />
               </div>

@@ -16,7 +16,8 @@ import { useDispatch } from '../context/DispatchContext';
 import {
   formatDispatchDate,
   formatOvertimeDuration,
-  calculateOvertimeMinutes,
+  formatTime12h,
+  calculateScheduleOvertimeBreakdown,
 } from '../data/initialData';
 
 interface RouteManagerModalProps {
@@ -37,8 +38,6 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
     helpers,
     driverPerformances,
     overtimeLogs,
-    regularShiftEndTime,
-    setRegularShiftEndTime,
     updateRouteDeparture,
     updateRouteArrival,
     updateRouteOvertime,
@@ -60,17 +59,18 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
   const [newRouteDate, setNewRouteDate] = useState(todayStr);
   const [newRouteVehicle, setNewRouteVehicle] = useState('');
   const [newSchedDep, setNewSchedDep] = useState('08:00');
-  const [newSchedArr, setNewSchedArr] = useState('17:00');
+  const [newSchedArr, setNewSchedArr] = useState('18:00');
   const [newTotalUnits, setNewTotalUnits] = useState(50);
   const [newTargetStops, setNewTargetStops] = useState(4);
 
-  // Overtime Calculator / Log Form State
+  // Overtime Calculator / Log Form State (8:00 AM - 12:00 PM & 2:00 PM - 6:00 PM)
   const [otDate, setOtDate] = useState(todayStr);
   const [otZone, setOtZone] = useState('Hierro Rafa STGO');
   const [otDriver, setOtDriver] = useState('Carlos');
   const [otHelper, setOtHelper] = useState('José');
   const [otDepTime, setOtDepTime] = useState('08:00');
-  const [otArrTime, setOtArrTime] = useState('18:30');
+  const [otArrTime, setOtArrTime] = useState('19:30');
+  const [otWorkedLunch, setOtWorkedLunch] = useState(false);
   const [otDriverMins, setOtDriverMins] = useState(90);
   const [otHelperMins, setOtHelperMins] = useState(90);
   const [otNotes, setOtNotes] = useState('');
@@ -94,23 +94,42 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
       if (!newRouteHelper) setNewRouteHelper(helpers[0]);
       if (!otHelper) setOtHelper(helpers[0]);
     }
-  }, [destinations, drivers, helpers, newRouteZone, newRouteDriver, newRouteHelper, otZone, otDriver, otHelper]);
+  }, [
+    destinations,
+    drivers,
+    helpers,
+    newRouteZone,
+    newRouteDriver,
+    newRouteHelper,
+    otZone,
+    otDriver,
+    otHelper,
+  ]);
 
   if (!isOpen) return null;
 
-  const handleOtArrivalTimeChange = (arrVal: string) => {
-    setOtArrTime(arrVal);
-    const autoMins = calculateOvertimeMinutes(arrVal, regularShiftEndTime);
-    setOtDriverMins(autoMins);
-    setOtHelperMins(otHelper && otHelper !== 'Sin Ayudante' ? autoMins : 0);
+  const recalculateOvertime = (dep: string, arr: string, workedLunch: boolean, hlp: string) => {
+    const breakdown = calculateScheduleOvertimeBreakdown(dep, arr, workedLunch);
+    setOtDriverMins(breakdown.totalOvertimeMins);
+    setOtHelperMins(hlp && hlp !== 'Sin Ayudante' ? breakdown.totalOvertimeMins : 0);
   };
 
-  const handleShiftEndChange = (newShiftEnd: string) => {
-    setRegularShiftEndTime(newShiftEnd);
-    const autoMins = calculateOvertimeMinutes(otArrTime, newShiftEnd);
-    setOtDriverMins(autoMins);
-    setOtHelperMins(otHelper && otHelper !== 'Sin Ayudante' ? autoMins : 0);
+  const handleOtDepChange = (val: string) => {
+    setOtDepTime(val);
+    recalculateOvertime(val, otArrTime, otWorkedLunch, otHelper);
   };
+
+  const handleOtArrChange = (val: string) => {
+    setOtArrTime(val);
+    recalculateOvertime(otDepTime, val, otWorkedLunch, otHelper);
+  };
+
+  const handleOtWorkedLunchChange = (checked: boolean) => {
+    setOtWorkedLunch(checked);
+    recalculateOvertime(otDepTime, otArrTime, checked, otHelper);
+  };
+
+  const currentBreakdown = calculateScheduleOvertimeBreakdown(otDepTime, otArrTime, otWorkedLunch);
 
   const handleCreateRoute = (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +144,7 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
       vehicle: newRouteVehicle.trim() || 'Vehículo de Flota',
       scheduledDeparture: newSchedDep,
       scheduledArrival: newSchedArr,
-      shiftEndTime: regularShiftEndTime,
+      shiftEndTime: '18:00',
       driverOvertimeMinutes: 0,
       helperOvertimeMinutes: 0,
       status: 'programada',
@@ -147,12 +166,12 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
       helper: otHelper,
       departureTime: otDepTime,
       arrivalTime: otArrTime,
-      regularEndTime: regularShiftEndTime,
+      regularEndTime: '18:00',
       driverOvertimeMinutes: otDriverMins,
       helperOvertimeMinutes: otHelperMins,
       notes:
         otNotes.trim() ||
-        `Jornada ${otDepTime} a ${otArrTime} (Fin turno normal: ${regularShiftEndTime}).`,
+        `Jornada ${formatTime12h(otDepTime)} a ${formatTime12h(otArrTime)} (Horario base: 8:00 AM-12:00 PM y 2:00 PM-6:00 PM).`,
     });
     setOtNotes('');
   };
@@ -188,7 +207,9 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Controla la hora de salida, hora de llegada, fecha de despacho y mide las horas extras de cada Chofer y Ayudante.
+              Horario laboral oficial:{' '}
+              <strong className="text-emerald-400">8:00 AM a 12:00 PM</strong> y de{' '}
+              <strong className="text-emerald-400">2:00 PM a 6:00 PM</strong>.
             </p>
           </div>
 
@@ -211,7 +232,7 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
           </div>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs & Work Schedule Banner */}
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3 shrink-0">
           <div className="flex items-center gap-2">
             <button
@@ -239,16 +260,13 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
             </button>
           </div>
 
-          {/* Shift End Time Configurator */}
-          <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 text-xs">
-            <span className="text-slate-400 font-bold">Hora Fin Turno Normal:</span>
-            <input
-              type="time"
-              value={regularShiftEndTime}
-              onChange={(e) => handleShiftEndChange(e.target.value)}
-              className="bg-slate-900 text-amber-300 font-mono font-black px-2 py-0.5 rounded-lg border border-amber-500/30 focus:outline-none focus:border-amber-400"
-              title="Las horas después de esta hora se calculan como Hora Extra"
-            />
+          {/* Official Two-Block Schedule Badge */}
+          <div className="flex flex-wrap items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-xl border border-emerald-500/30 text-xs">
+            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="text-slate-400 font-bold">Horario Laboral:</span>
+            <span className="text-emerald-300 font-mono font-black">8:00 AM - 12:00 PM</span>
+            <span className="text-slate-600">|</span>
+            <span className="text-emerald-300 font-mono font-black">2:00 PM - 6:00 PM</span>
           </div>
         </div>
 
@@ -464,7 +482,7 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                         {isDeparted ? (
                           <div className="flex items-center justify-between">
                             <span className="text-base font-black font-mono text-sky-400">
-                              {route.actualDeparture}
+                              {formatTime12h(route.actualDeparture)}
                             </span>
                             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                               Salida Registrada
@@ -493,14 +511,14 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                             value={route.actualArrival || route.scheduledArrival}
                             onChange={(e) => updateRouteArrival(route.id, e.target.value)}
                             className="bg-slate-900 text-emerald-400 font-mono font-bold px-2 py-0.5 rounded border border-slate-700 text-xs"
-                            title="Editar Hora de Llegada (Calcula Hora Extra automáticamente)"
+                            title="Editar Hora de Llegada (Calcula Hora Extra según 8AM-12PM y 2PM-6PM)"
                           />
                         </div>
 
                         {isArrived ? (
                           <div className="flex items-center justify-between">
                             <span className="text-base font-black font-mono text-emerald-400">
-                              {route.actualArrival}
+                              {formatTime12h(route.actualArrival)}
                             </span>
                             <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                               Llegada Registrada
@@ -524,8 +542,8 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
                             <span>Hora Extra en Ruta</span>
                           </span>
-                          <span className="text-[10px] text-slate-500">
-                            Turno: {regularShiftEndTime}
+                          <span className="text-[10px] text-slate-400">
+                            8-12 PM | 2-6 PM
                           </span>
                         </div>
 
@@ -633,10 +651,10 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                             </div>
                           </td>
                           <td className="p-3 font-mono text-sky-400 font-bold">
-                            {perf.actualDeparture || perf.scheduledDeparture}
+                            {formatTime12h(perf.actualDeparture || perf.scheduledDeparture)}
                           </td>
                           <td className="p-3 font-mono text-emerald-400 font-bold">
-                            {perf.actualArrival || '--:--'}
+                            {formatTime12h(perf.actualArrival)}
                           </td>
                           <td className="p-3 font-mono">
                             <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-lg font-black">
@@ -667,9 +685,27 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
           </div>
         )}
 
-        {/* TAB 2: DEDICATED OVERTIME TRACKER FOR DRIVER & HELPER */}
+        {/* TAB 2: DEDICATED OVERTIME TRACKER FOR DRIVER & HELPER (8:00 AM - 12:00 PM y 2:00 PM - 6:00 PM) */}
         {activeTab === 'overtime' && (
           <div className="space-y-5 overflow-y-auto pr-1 flex-grow text-xs">
+            {/* Schedule Explanation Box */}
+            <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="space-y-0.5">
+                <span className="text-emerald-400 font-black uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Regla de Jornada Laboral Aplicada</span>
+                </span>
+                <p className="text-slate-300 text-xs">
+                  Turno Mañana: <strong className="text-white">8:00 AM a 12:00 PM</strong> &bull; Receso Mediodía:{' '}
+                  <strong className="text-amber-300">12:00 PM a 2:00 PM</strong> &bull; Turno Tarde:{' '}
+                  <strong className="text-white">2:00 PM a 6:00 PM</strong>
+                </p>
+              </div>
+              <span className="text-[11px] bg-slate-900 text-emerald-300 px-3 py-1 rounded-xl border border-emerald-500/30 font-bold self-start sm:self-auto">
+                Horas fuera de 8-12 PM y 2-6 PM = Hora Extra
+              </span>
+            </div>
+
             {/* Summary Cards for Drivers & Helpers */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Acumulado Choferes */}
@@ -725,12 +761,25 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
                 <h4 className="text-sm font-black text-amber-400 flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
-                  <span>Calculadora y Registro de Hora Extra (Chofer y Ayudante)</span>
+                  <span>Calculadora de Hora Extra (8:00 AM - 12:00 PM y 2:00 PM - 6:00 PM)</span>
                 </h4>
-                <span className="text-[11px] text-slate-400">
-                  Al ingresar la <strong className="text-white">Hora de Llegada</strong> se calcula automáticamente respecto a las{' '}
-                  <strong className="text-amber-300 font-mono">{regularShiftEndTime}</strong>
-                </span>
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  {currentBreakdown.before8amMins > 0 && (
+                    <span className="bg-sky-500/15 text-sky-300 px-2 py-0.5 rounded border border-sky-500/30">
+                      Antes 8 AM: +{formatOvertimeDuration(currentBreakdown.before8amMins)}
+                    </span>
+                  )}
+                  {currentBreakdown.middayMins > 0 && (
+                    <span className="bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">
+                      12 PM - 2 PM: +{formatOvertimeDuration(currentBreakdown.middayMins)}
+                    </span>
+                  )}
+                  {currentBreakdown.after6pmMins > 0 && (
+                    <span className="bg-rose-500/15 text-rose-300 px-2 py-0.5 rounded border border-rose-500/30">
+                      Después 6 PM: +{formatOvertimeDuration(currentBreakdown.after6pmMins)}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -779,7 +828,10 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                   <label className="block text-slate-300 mb-1">Ayudante *</label>
                   <select
                     value={otHelper}
-                    onChange={(e) => setOtHelper(e.target.value)}
+                    onChange={(e) => {
+                      setOtHelper(e.target.value);
+                      recalculateOvertime(otDepTime, otArrTime, otWorkedLunch, e.target.value);
+                    }}
                     className="w-full bg-slate-900 text-indigo-300 font-bold p-2 rounded-xl border border-slate-700"
                   >
                     {helpers.map((h) => (
@@ -793,21 +845,25 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block text-slate-300 mb-1">Hora de Salida</label>
+                  <label className="block text-slate-300 mb-1">
+                    Hora de Salida ({formatTime12h(otDepTime)})
+                  </label>
                   <input
                     type="time"
                     value={otDepTime}
-                    onChange={(e) => setOtDepTime(e.target.value)}
+                    onChange={(e) => handleOtDepChange(e.target.value)}
                     className="w-full bg-slate-900 text-sky-300 font-mono font-bold p-2 rounded-xl border border-slate-700"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 mb-1">Hora de Llegada</label>
+                  <label className="block text-slate-300 mb-1">
+                    Hora de Llegada ({formatTime12h(otArrTime)})
+                  </label>
                   <input
                     type="time"
                     value={otArrTime}
-                    onChange={(e) => handleOtArrivalTimeChange(e.target.value)}
+                    onChange={(e) => handleOtArrChange(e.target.value)}
                     className="w-full bg-slate-900 text-emerald-300 font-mono font-bold p-2 rounded-xl border border-slate-700"
                   />
                 </div>
@@ -871,10 +927,25 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                 </div>
               </div>
 
+              {/* Option if route spans across 12:00 PM - 2:00 PM */}
+              {currentBreakdown.spansFullMidday && (
+                <label className="flex items-center gap-2 bg-slate-900/90 px-3 py-2 rounded-xl border border-amber-500/30 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={otWorkedLunch}
+                    onChange={(e) => handleOtWorkedLunchChange(e.target.checked)}
+                    className="rounded bg-slate-950 border-slate-600 text-amber-500 focus:ring-amber-500"
+                  />
+                  <span className="text-amber-200 font-semibold">
+                    ¿Trabajaron corrido durante el mediodía (12:00 PM a 2:00 PM)? Sumar esas 2 horas como Hora Extra
+                  </span>
+                </label>
+              )}
+
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
-                  placeholder="Motivo u observación de la hora extra (Ej: Descarga tardía en Santiago, tráfico...)"
+                  placeholder="Motivo u observación de la hora extra (Ej: Descarga después de las 6:00 PM o en horario 12:00 PM - 2:00 PM...)"
                   value={otNotes}
                   onChange={(e) => setOtNotes(e.target.value)}
                   className="flex-grow bg-slate-900 text-white p-2.5 rounded-xl border border-slate-700"
@@ -927,8 +998,8 @@ export const RouteManagerModal: React.FC<RouteManagerModalProps> = ({
                           <td className="p-3 font-bold text-amber-300">🚛 {log.driver}</td>
                           <td className="p-3 font-bold text-indigo-300">👷 {log.helper}</td>
                           <td className="p-3 font-mono text-slate-300">
-                            {log.departureTime} &rarr;{' '}
-                            <strong className="text-emerald-400">{log.arrivalTime}</strong>
+                            {formatTime12h(log.departureTime)} &rarr;{' '}
+                            <strong className="text-emerald-400">{formatTime12h(log.arrivalTime)}</strong>
                           </td>
                           <td className="p-3 font-mono">
                             <span className="bg-amber-500/15 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md font-black">

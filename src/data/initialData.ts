@@ -20,6 +20,27 @@ export const INITIAL_ALUZINC_COLORS: string[] = [
   'No aplica',
 ];
 
+// Horario laboral oficial: 8:00 AM a 12:00 PM y de 2:00 PM a 6:00 PM
+export const WORK_SCHEDULE = {
+  morningStart: '08:00', // 8:00 AM
+  morningEnd: '12:00',   // 12:00 PM
+  afternoonStart: '14:00', // 2:00 PM
+  afternoonEnd: '18:00',   // 6:00 PM
+  label: '8:00 AM - 12:00 PM y 2:00 PM - 6:00 PM',
+};
+
+export function formatTime12h(time24?: string | null): string {
+  if (!time24) return '--:--';
+  const parts = time24.split(':');
+  if (parts.length < 2) return time24;
+  const h = parseInt(parts[0], 10);
+  const m = parts[1];
+  if (isNaN(h)) return time24;
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m} ${period}`;
+}
+
 export function getColorSwatch(colorName?: string): { dotClass: string; badgeClass: string; isApplicable: boolean } {
   if (!colorName || colorName === 'No aplica' || colorName === 'Sin color') {
     return {
@@ -101,15 +122,105 @@ export function formatOvertimeDuration(minutes?: number): string {
   return `${hrs}h ${String(mins).padStart(2, '0')}m`;
 }
 
-export function calculateOvertimeMinutes(arrivalTime?: string | null, shiftEndTime = '17:00'): number {
-  if (!arrivalTime || !shiftEndTime) return 0;
-  const arrParts = arrivalTime.split(':');
-  const endParts = shiftEndTime.split(':');
-  if (arrParts.length < 2 || endParts.length < 2) return 0;
-  const arrMins = parseInt(arrParts[0], 10) * 60 + parseInt(arrParts[1], 10);
-  const endMins = parseInt(endParts[0], 10) * 60 + parseInt(endParts[1], 10);
-  if (isNaN(arrMins) || isNaN(endMins)) return 0;
-  return Math.max(0, arrMins - endMins);
+export interface OvertimeBreakdown {
+  before8amMins: number;
+  middayMins: number;
+  after6pmMins: number;
+  totalOvertimeMins: number;
+  spansFullMidday: boolean;
+}
+
+/**
+ * Calcula las horas extras tomando en cuenta la jornada laboral:
+ * Mañana: 8:00 AM (480) a 12:00 PM (720)
+ * Mediodía (Fuera de turno): 12:00 PM (720) a 2:00 PM (840)
+ * Tarde: 2:00 PM (840) a 6:00 PM (1080)
+ */
+export function calculateScheduleOvertimeBreakdown(
+  departureTime?: string | null,
+  arrivalTime?: string | null,
+  workedDuringLunch = false
+): OvertimeBreakdown {
+  const empty: OvertimeBreakdown = {
+    before8amMins: 0,
+    middayMins: 0,
+    after6pmMins: 0,
+    totalOvertimeMins: 0,
+    spansFullMidday: false,
+  };
+
+  if (!arrivalTime) return empty;
+
+  const parseMins = (t?: string | null): number | null => {
+    if (!t) return null;
+    const p = t.split(':');
+    if (p.length < 2) return null;
+    const h = parseInt(p[0], 10);
+    const m = parseInt(p[1], 10);
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  };
+
+  const arrMins = parseMins(arrivalTime);
+  if (arrMins === null) return empty;
+  const depMins = parseMins(departureTime) ?? 480; // Default 8:00 AM if not provided
+
+  if (arrMins <= depMins) return empty;
+
+  const MORNING_START = 8 * 60;   // 08:00 (480)
+  const MORNING_END = 12 * 60;    // 12:00 (720)
+  const AFTERNOON_START = 14 * 60; // 14:00 (840)
+  const AFTERNOON_END = 18 * 60;   // 18:00 (1080)
+
+  // 1. Minutos antes de las 8:00 AM
+  const before8amMins =
+    depMins < MORNING_START
+      ? Math.max(0, Math.min(arrMins, MORNING_START) - depMins)
+      : 0;
+
+  // 2. Minutos entre 12:00 PM y 2:00 PM
+  const overlapMidday = Math.max(
+    0,
+    Math.min(arrMins, AFTERNOON_START) - Math.max(depMins, MORNING_END)
+  );
+  // Si la ruta inició en la mañana y terminó entre 12:01 PM y 2:00 PM, o inició entre 12:00 PM y 1:59 PM,
+  // ese tiempo en el bloque de 12:00 PM a 2:00 PM se trabajó efectivamente.
+  // Si cruzó todo el día (salió antes de las 12:00 PM y regresó después de las 2:00 PM), se suma si workedDuringLunch = true.
+  const spansFullMidday = depMins <= MORNING_END && arrMins >= AFTERNOON_START;
+  const middayMins = spansFullMidday
+    ? workedDuringLunch
+      ? overlapMidday
+      : 0
+    : overlapMidday;
+
+  // 3. Minutos después de las 6:00 PM (18:00)
+  const after6pmMins =
+    arrMins > AFTERNOON_END
+      ? Math.max(0, arrMins - Math.max(depMins, AFTERNOON_END))
+      : 0;
+
+  const totalOvertimeMins = before8amMins + middayMins + after6pmMins;
+
+  return {
+    before8amMins,
+    middayMins,
+    after6pmMins,
+    totalOvertimeMins,
+    spansFullMidday,
+  };
+}
+
+export function calculateOvertimeMinutes(
+  arrivalTime?: string | null,
+  _shiftEndTime = '18:00',
+  departureTime?: string | null,
+  workedDuringLunch = false
+): number {
+  return calculateScheduleOvertimeBreakdown(
+    departureTime,
+    arrivalTime,
+    workedDuringLunch
+  ).totalOvertimeMins;
 }
 
 export const INITIAL_DESTINATIONS: DestinationZone[] = [
@@ -157,14 +268,14 @@ export const INITIAL_ROUTES: RouteRecord[] = [
     helper: 'José',
     dispatchDate: '2026-09-28',
     vehicle: 'Camión Isuzu 01 (Placa A92-BB7)',
-    scheduledDeparture: '07:30',
-    actualDeparture: '07:45',
-    scheduledArrival: '17:00',
-    actualArrival: '18:30',
-    shiftEndTime: '17:00',
+    scheduledDeparture: '08:00',
+    actualDeparture: '08:00',
+    scheduledArrival: '18:00',
+    actualArrival: '19:30',
+    shiftEndTime: '18:00',
     driverOvertimeMinutes: 90,
     helperOvertimeMinutes: 90,
-    overtimeNotes: '1h 30m extra por descarga vespertina en Santiago.',
+    overtimeNotes: '1h 30m extra después de las 6:00 PM en Santiago.',
     status: 'en_ruta',
     targetStops: 3,
     completedStops: 1,
@@ -182,13 +293,13 @@ export const INITIAL_ROUTES: RouteRecord[] = [
     dispatchDate: '2026-09-28',
     vehicle: 'Camión Mack 03 (Placa B45-XZ1)',
     scheduledDeparture: '08:00',
-    actualDeparture: '08:15',
-    scheduledArrival: '17:00',
-    actualArrival: '19:00',
-    shiftEndTime: '17:00',
+    actualDeparture: '08:00',
+    scheduledArrival: '18:00',
+    actualArrival: '20:00',
+    shiftEndTime: '18:00',
     driverOvertimeMinutes: 120,
     helperOvertimeMinutes: 120,
-    overtimeNotes: '2h 00m extra por tráfico y espera de montacargas en SFM.',
+    overtimeNotes: '2h 00m extra después de las 6:00 PM por descarga en SFM.',
     status: 'en_ruta',
     targetStops: 3,
     completedStops: 1,
@@ -205,14 +316,14 @@ export const INITIAL_ROUTES: RouteRecord[] = [
     helper: 'Pedro',
     dispatchDate: '2026-09-28',
     vehicle: 'Camión Daihatsu 02 (Placa M09-KL4)',
-    scheduledDeparture: '08:30',
-    actualDeparture: '08:35',
-    scheduledArrival: '17:00',
-    actualArrival: '17:45',
-    shiftEndTime: '17:00',
-    driverOvertimeMinutes: 45,
-    helperOvertimeMinutes: 45,
-    overtimeNotes: '45 min de hora extra en regreso desde Jarabacoa.',
+    scheduledDeparture: '08:00',
+    actualDeparture: '08:00',
+    scheduledArrival: '12:00',
+    actualArrival: '13:15',
+    shiftEndTime: '18:00',
+    driverOvertimeMinutes: 75,
+    helperOvertimeMinutes: 75,
+    overtimeNotes: '1h 15m de hora extra trabajando en horario de mediodía (12:00 PM a 1:15 PM).',
     status: 'completada',
     targetStops: 2,
     completedStops: 2,
@@ -233,12 +344,12 @@ export const INITIAL_OVERTIME_LOGS: OvertimeLog[] = [
     zone: 'Hierro Rafa STGO',
     driver: 'Carlos',
     helper: 'José',
-    departureTime: '07:45',
-    arrivalTime: '18:30',
-    regularEndTime: '17:00',
+    departureTime: '08:00',
+    arrivalTime: '19:30',
+    regularEndTime: '18:00',
     driverOvertimeMinutes: 90,
     helperOvertimeMinutes: 90,
-    notes: 'Extensión de jornada en descarga de Aluzinc en Santiago.',
+    notes: 'Llegada a las 7:30 PM (1h 30m después del cierre de las 6:00 PM).',
   },
   {
     id: 'ot-2',
@@ -248,12 +359,12 @@ export const INITIAL_OVERTIME_LOGS: OvertimeLog[] = [
     zone: 'Hierro Reales La Vega',
     driver: 'Danilo',
     helper: 'Miguel',
-    departureTime: '08:15',
-    arrivalTime: '19:00',
-    regularEndTime: '17:00',
+    departureTime: '14:00',
+    arrivalTime: '20:00',
+    regularEndTime: '18:00',
     driverOvertimeMinutes: 120,
     helperOvertimeMinutes: 120,
-    notes: 'Demora en rampa de descarga en SFM y La Vega.',
+    notes: 'Turno tarde (2:00 PM a 8:00 PM): 2h 00m extra después de las 6:00 PM.',
   },
   {
     id: 'ot-3',
@@ -263,12 +374,12 @@ export const INITIAL_OVERTIME_LOGS: OvertimeLog[] = [
     zone: 'Bellon STGO',
     driver: 'Nelson',
     helper: 'Pedro',
-    departureTime: '08:35',
-    arrivalTime: '17:45',
-    regularEndTime: '17:00',
-    driverOvertimeMinutes: 45,
-    helperOvertimeMinutes: 45,
-    notes: 'Regreso de ruta Jarabacoa después de las 5:00 PM.',
+    departureTime: '08:00',
+    arrivalTime: '13:15',
+    regularEndTime: '12:00',
+    driverOvertimeMinutes: 75,
+    helperOvertimeMinutes: 75,
+    notes: 'Turno mañana extendido hasta la 1:15 PM (1h 15m extra en horario de 12:00 PM - 2:00 PM).',
   },
 ];
 
@@ -285,8 +396,8 @@ export const INITIAL_ORDERS: Order[] = [
     driver: 'Carlos',
     helper: 'José',
     dispatchDate: '2026-09-28',
-    departureTime: '07:45',
-    arrivalTime: '18:30',
+    departureTime: '08:00',
+    arrivalTime: '19:30',
     driverOvertimeMinutes: 90,
     helperOvertimeMinutes: 90,
     items: [
@@ -322,8 +433,8 @@ export const INITIAL_ORDERS: Order[] = [
     unitsDelivered: 65,
     itemsDescription: '40 Aluzinc Azul liso C-26, 15 Caballetes Azul liso C-26, 10 Lima hoya Gris text C-24',
     estimatedDeliveryTime: '09:30',
-    createdAt: '2026-09-28 07:00',
-    dispatchedAt: '2026-09-28 07:45',
+    createdAt: '2026-09-28 08:00',
+    dispatchedAt: '2026-09-28 08:00',
     arrivedAt: '2026-09-28 08:50',
     deliveredAt: null,
     history: [
@@ -331,7 +442,7 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1001-1',
         status: 'creado',
         statusLabel: 'Pedido Registrado en Planta',
-        timestamp: '2026-09-28 07:00',
+        timestamp: '2026-09-28 08:00',
         updatedBy: 'Despacho Central',
         notes: 'Envío multi-producto registrado: 40 Aluzinc (Azul liso), 15 Caballetes, 10 Lima hoya (65 unidades totales).',
         unitsVerified: 65,
@@ -340,21 +451,21 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1001-2',
         status: 'en_preparacion',
         statusLabel: 'Flejeado y Verificación de Calibres y Colores',
-        timestamp: '2026-09-28 07:25',
+        timestamp: '2026-09-28 08:10',
         updatedBy: 'Control de Calidad',
         notes: '65 unidades contadas y separadas por tipo de producto y color.',
         unitsVerified: 65,
-        durationFromPrevMinutes: 25,
+        durationFromPrevMinutes: 10,
       },
       {
         id: 'h-1001-3',
         status: 'en_ruta',
         statusLabel: 'Salida de Patio a Ruta',
-        timestamp: '2026-09-28 07:45',
+        timestamp: '2026-09-28 08:15',
         updatedBy: 'Carlos (Chofer) & José (Ayudante)',
         notes: 'En camino hacia Santiago.',
         location: 'Patio Central',
-        durationFromPrevMinutes: 20,
+        durationFromPrevMinutes: 5,
       },
       {
         id: 'h-1001-4',
@@ -364,7 +475,7 @@ export const INITIAL_ORDERS: Order[] = [
         updatedBy: 'Carlos (Chofer)',
         notes: 'Camión ubicado en patio de descarga de Hierro Rafa STGO. Conteo de unidades en rampa.',
         unitsVerified: 65,
-        durationFromPrevMinutes: 65,
+        durationFromPrevMinutes: 35,
       },
     ],
   },
@@ -380,8 +491,8 @@ export const INITIAL_ORDERS: Order[] = [
     driver: 'Danilo',
     helper: 'Miguel',
     dispatchDate: '2026-09-28',
-    departureTime: '08:15',
-    arrivalTime: '19:00',
+    departureTime: '14:00',
+    arrivalTime: '20:00',
     driverOvertimeMinutes: 120,
     helperOvertimeMinutes: 120,
     items: [
@@ -412,9 +523,9 @@ export const INITIAL_ORDERS: Order[] = [
     ],
     unitsCount: 75,
     itemsDescription: '50 Aluteja Terracota text C-26, 15 Caballete tipo teja C-26, 10 Parales C-18',
-    estimatedDeliveryTime: '10:15',
-    createdAt: '2026-09-28 07:30',
-    dispatchedAt: '2026-09-28 08:15',
+    estimatedDeliveryTime: '16:15',
+    createdAt: '2026-09-28 14:00',
+    dispatchedAt: '2026-09-28 14:15',
     arrivedAt: null,
     deliveredAt: null,
     history: [
@@ -422,7 +533,7 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1002-1',
         status: 'creado',
         statusLabel: 'Pedido Registrado',
-        timestamp: '2026-09-28 07:30',
+        timestamp: '2026-09-28 14:00',
         updatedBy: 'Ventas La Vega',
         notes: 'Envío con 75 unidades combinadas.',
         unitsVerified: 75,
@@ -431,10 +542,10 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1002-2',
         status: 'en_ruta',
         statusLabel: 'En Ruta hacia La Vega',
-        timestamp: '2026-09-28 08:15',
+        timestamp: '2026-09-28 14:15',
         updatedBy: 'Danilo (Chofer) & Miguel (Ayudante)',
         notes: 'Tránsito fluido por Autopista Duarte.',
-        durationFromPrevMinutes: 45,
+        durationFromPrevMinutes: 15,
       },
     ],
   },
@@ -480,7 +591,7 @@ export const INITIAL_ORDERS: Order[] = [
     unitsCount: 105,
     itemsDescription: '30 Durmientes C-16, 25 Caños 1/8", 50 Tolas 1/8"',
     estimatedDeliveryTime: '11:45',
-    createdAt: '2026-09-28 07:40',
+    createdAt: '2026-09-28 08:00',
     dispatchedAt: '2026-09-28 08:15',
     arrivedAt: null,
     deliveredAt: null,
@@ -489,7 +600,7 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1003-1',
         status: 'creado',
         statusLabel: 'Pedido Creado',
-        timestamp: '2026-09-28 07:40',
+        timestamp: '2026-09-28 08:00',
         updatedBy: 'Despacho SFM',
         unitsVerified: 105,
       },
@@ -499,7 +610,7 @@ export const INITIAL_ORDERS: Order[] = [
         statusLabel: 'En Tránsito',
         timestamp: '2026-09-28 08:15',
         updatedBy: 'Danilo',
-        durationFromPrevMinutes: 35,
+        durationFromPrevMinutes: 15,
       },
     ],
   },
@@ -515,7 +626,7 @@ export const INITIAL_ORDERS: Order[] = [
     driver: 'Carlos',
     helper: 'José',
     dispatchDate: '2026-09-29',
-    departureTime: '07:30',
+    departureTime: '08:00',
     items: [
       {
         id: 'item-1004-1',
@@ -536,7 +647,7 @@ export const INITIAL_ORDERS: Order[] = [
     ],
     unitsCount: 90,
     itemsDescription: '40 Tolas C-3/16", 50 Aluzinc Verde liso C-24',
-    estimatedDeliveryTime: '13:00',
+    estimatedDeliveryTime: '11:30',
     createdAt: '2026-09-28 08:15',
     dispatchedAt: null,
     arrivedAt: null,
@@ -564,10 +675,10 @@ export const INITIAL_ORDERS: Order[] = [
     driver: 'Nelson',
     helper: 'Pedro',
     dispatchDate: '2026-09-28',
-    departureTime: '08:35',
-    arrivalTime: '17:45',
-    driverOvertimeMinutes: 45,
-    helperOvertimeMinutes: 45,
+    departureTime: '08:00',
+    arrivalTime: '13:15',
+    driverOvertimeMinutes: 75,
+    helperOvertimeMinutes: 75,
     items: [
       {
         id: 'item-1005-1',
@@ -593,9 +704,9 @@ export const INITIAL_ORDERS: Order[] = [
     itemsDescription: '40 Aluzinc Rojo liso C-26, 20 Caballetes Rojo liso C-26',
     createdAt: '2026-09-28 08:00',
     dispatchedAt: '2026-09-28 08:35',
-    arrivedAt: '2026-09-28 09:15',
-    deliveredAt: '2026-09-28 09:40',
-    unloadingDurationMinutes: 25,
+    arrivedAt: '2026-09-28 12:30',
+    deliveredAt: '2026-09-28 13:15',
+    unloadingDurationMinutes: 45,
     history: [
       {
         id: 'h-1005-1',
@@ -617,19 +728,19 @@ export const INITIAL_ORDERS: Order[] = [
         id: 'h-1005-3',
         status: 'en_descarga',
         statusLabel: 'Llegada y Descarga',
-        timestamp: '2026-09-28 09:15',
+        timestamp: '2026-09-28 12:30',
         updatedBy: 'Nelson',
-        durationFromPrevMinutes: 40,
+        durationFromPrevMinutes: 235,
       },
       {
         id: 'h-1005-4',
         status: 'entregado',
         statusLabel: 'Entrega Conforme',
-        timestamp: '2026-09-28 09:40',
+        timestamp: '2026-09-28 13:15',
         updatedBy: 'Nelson & Pedro',
         notes: '60 unidades verificadas conforme (40 Aluzinc Rojo liso + 20 Caballetes).',
         unitsVerified: 60,
-        durationFromPrevMinutes: 25,
+        durationFromPrevMinutes: 45,
       },
     ],
   },
@@ -714,7 +825,7 @@ export const INITIAL_ORDERS: Order[] = [
     driver: 'Nelson',
     helper: 'Pedro',
     dispatchDate: '2026-09-29',
-    departureTime: '08:30',
+    departureTime: '14:00',
     items: [
       {
         id: 'item-1007-1',
@@ -733,7 +844,7 @@ export const INITIAL_ORDERS: Order[] = [
     ],
     unitsCount: 45,
     itemsDescription: '30 Aluzinc Terracota liso C-26, 15 Caballete tipo teja Terracota liso C-26',
-    estimatedDeliveryTime: '13:30',
+    estimatedDeliveryTime: '16:30',
     createdAt: '2026-09-28 08:45',
     dispatchedAt: null,
     arrivedAt: null,
