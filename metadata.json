@@ -1,0 +1,6 @@
+{
+  "name": "Dispatch Logistics Pro - Control de Despachos y Rutas PWA",
+  "description": "Sistema PWA para gestión logística de despachos con soporte offline, notificaciones push, conteo preciso de unidades, historial de estados detallado y medición de eficiencia de rutas de transportistas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
