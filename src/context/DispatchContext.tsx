@@ -10,6 +10,7 @@ import {
   StatusHistoryEntry,
   DestinationZone,
   ProductPresentation,
+  OvertimeLog,
 } from '../types/dispatch';
 import {
   INITIAL_ORDERS,
@@ -18,6 +19,11 @@ import {
   INITIAL_PRODUCT_PRESENTATIONS,
   INITIAL_CALIBRES,
   INITIAL_DRIVERS,
+  INITIAL_HELPERS,
+  INITIAL_ALUZINC_COLORS,
+  INITIAL_OVERTIME_LOGS,
+  calculateOvertimeMinutes,
+  formatOvertimeDuration,
 } from '../data/initialData';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -29,6 +35,8 @@ interface AdvanceStatusOptions {
   unitsVerified?: number;
   itemsDelivered?: OrderItem[];
   delayReason?: string;
+  driverOvertimeMinutes?: number;
+  helperOvertimeMinutes?: number;
 }
 
 interface DispatchContextType {
@@ -37,7 +45,12 @@ interface DispatchContextType {
   destinations: DestinationZone[];
   productPresentations: ProductPresentation[];
   calibres: string[];
+  aluzincColors: string[];
   drivers: string[];
+  helpers: string[];
+  overtimeLogs: OvertimeLog[];
+  regularShiftEndTime: string;
+  setRegularShiftEndTime: (time: string) => void;
 
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -49,6 +62,8 @@ interface DispatchContextType {
   setSelectedStatus: (s: string) => void;
   selectedDriver: string;
   setSelectedDriver: (d: string) => void;
+  selectedDispatchDate: string;
+  setSelectedDispatchDate: (date: string) => void;
   quickDriverMode: boolean;
   setQuickDriverMode: (val: boolean) => void;
   activeDriverFilter: string;
@@ -62,13 +77,18 @@ interface DispatchContextType {
   quickVerifyUnits: (orderId: string, count: number) => void;
   quickVerifyItemUnits: (orderId: string, itemId: string, count: number) => void;
 
-  // Route Actions
+  // Route & Overtime Actions
   updateRouteDeparture: (routeId: string, actualTime?: string) => void;
   updateRouteArrival: (routeId: string, actualTime?: string) => void;
   updateRouteStatus: (routeId: string, status: RouteRecord['status'], notes?: string) => void;
+  updateRouteOvertime: (routeId: string, driverOvertimeMinutes: number, helperOvertimeMinutes: number, notes?: string) => void;
   addRoute: (route: Omit<RouteRecord, 'id' | 'completedStops' | 'deliveredUnits' | 'actualDeparture' | 'actualArrival'>) => void;
   updateRoute: (route: RouteRecord) => void;
   deleteRoute: (id: string) => void;
+
+  addOvertimeLog: (log: Omit<OvertimeLog, 'id'>) => void;
+  updateOvertimeLog: (log: OvertimeLog) => void;
+  deleteOvertimeLog: (id: string) => void;
 
   // Catalog / Settings Actions
   addDestination: (dest: Omit<DestinationZone, 'id'>) => void;
@@ -82,8 +102,14 @@ interface DispatchContextType {
   addCalibre: (calibre: string) => void;
   deleteCalibre: (calibre: string) => void;
 
+  addAluzincColor: (color: string) => void;
+  deleteAluzincColor: (color: string) => void;
+
   addDriver: (driver: string) => void;
   deleteDriver: (driver: string) => void;
+
+  addHelper: (helper: string) => void;
+  deleteHelper: (helper: string) => void;
 
   resetAllData: () => void;
   clearAllToZero: (options?: { resetRoutes?: boolean }) => void;
@@ -101,6 +127,8 @@ interface DispatchContextType {
     totalUnitsDelivered: number;
     efficiencyRate: number;
     avgUnloadMinutes: number;
+    totalDriverOvertimeMinutes: number;
+    totalHelperOvertimeMinutes: number;
   };
   filteredOrders: Order[];
 
@@ -131,9 +159,9 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     triggerHaptic,
   } = usePushNotifications();
 
-  // Load state from localStorage or initial dataset
+  // Load state from localStorage or initial dataset (v6 includes updated Aluzinc colors)
   const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('dispatch_orders_v4');
+    const saved = localStorage.getItem('dispatch_orders_v6');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -145,7 +173,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [routes, setRoutes] = useState<RouteRecord[]>(() => {
-    const saved = localStorage.getItem('dispatch_routes_v4');
+    const saved = localStorage.getItem('dispatch_routes_v5');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -157,7 +185,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [destinations, setDestinations] = useState<DestinationZone[]>(() => {
-    const saved = localStorage.getItem('dispatch_destinations_v4');
+    const saved = localStorage.getItem('dispatch_destinations_v5');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -169,7 +197,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [productPresentations, setProductPresentations] = useState<ProductPresentation[]>(() => {
-    const saved = localStorage.getItem('dispatch_products_v4');
+    const saved = localStorage.getItem('dispatch_products_v6');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -181,7 +209,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   });
 
   const [calibres, setCalibres] = useState<string[]>(() => {
-    const saved = localStorage.getItem('dispatch_calibres_v4');
+    const saved = localStorage.getItem('dispatch_calibres_v5');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -192,8 +220,20 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_CALIBRES;
   });
 
+  const [aluzincColors, setAluzincColors] = useState<string[]>(() => {
+    const saved = localStorage.getItem('dispatch_aluzinc_colors_v6');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return INITIAL_ALUZINC_COLORS;
+      }
+    }
+    return INITIAL_ALUZINC_COLORS;
+  });
+
   const [drivers, setDrivers] = useState<string[]>(() => {
-    const saved = localStorage.getItem('dispatch_drivers_v4');
+    const saved = localStorage.getItem('dispatch_drivers_v5');
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -204,6 +244,34 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return INITIAL_DRIVERS;
   });
 
+  const [helpers, setHelpers] = useState<string[]>(() => {
+    const saved = localStorage.getItem('dispatch_helpers_v5');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return INITIAL_HELPERS;
+      }
+    }
+    return INITIAL_HELPERS;
+  });
+
+  const [overtimeLogs, setOvertimeLogs] = useState<OvertimeLog[]>(() => {
+    const saved = localStorage.getItem('dispatch_overtime_v5');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return INITIAL_OVERTIME_LOGS;
+      }
+    }
+    return INITIAL_OVERTIME_LOGS;
+  });
+
+  const [regularShiftEndTime, setRegularShiftEndTime] = useState<string>(() => {
+    return localStorage.getItem('dispatch_shift_end_v5') || '17:00';
+  });
+
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
 
   // Filters
@@ -212,6 +280,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [selectedPriority, setSelectedPriority] = useState('ALL');
   const [selectedStatus, setSelectedStatus] = useState('ALL');
   const [selectedDriver, setSelectedDriver] = useState('ALL');
+  const [selectedDispatchDate, setSelectedDispatchDate] = useState('ALL');
 
   // Quick Unload Driver Mode - default to Carlos
   const [quickDriverMode, setQuickDriverMode] = useState(false);
@@ -219,7 +288,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Persist to local storage
   useEffect(() => {
-    localStorage.setItem('dispatch_orders_v4', JSON.stringify(orders));
+    localStorage.setItem('dispatch_orders_v6', JSON.stringify(orders));
     if (!isOnline) {
       setOfflineQueueCount((prev) => prev + 1);
     } else {
@@ -228,24 +297,40 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [orders, isOnline]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_routes_v4', JSON.stringify(routes));
+    localStorage.setItem('dispatch_routes_v5', JSON.stringify(routes));
   }, [routes]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_destinations_v4', JSON.stringify(destinations));
+    localStorage.setItem('dispatch_destinations_v5', JSON.stringify(destinations));
   }, [destinations]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_products_v4', JSON.stringify(productPresentations));
+    localStorage.setItem('dispatch_products_v6', JSON.stringify(productPresentations));
   }, [productPresentations]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_calibres_v4', JSON.stringify(calibres));
+    localStorage.setItem('dispatch_calibres_v5', JSON.stringify(calibres));
   }, [calibres]);
 
   useEffect(() => {
-    localStorage.setItem('dispatch_drivers_v4', JSON.stringify(drivers));
+    localStorage.setItem('dispatch_aluzinc_colors_v6', JSON.stringify(aluzincColors));
+  }, [aluzincColors]);
+
+  useEffect(() => {
+    localStorage.setItem('dispatch_drivers_v5', JSON.stringify(drivers));
   }, [drivers]);
+
+  useEffect(() => {
+    localStorage.setItem('dispatch_helpers_v5', JSON.stringify(helpers));
+  }, [helpers]);
+
+  useEffect(() => {
+    localStorage.setItem('dispatch_overtime_v5', JSON.stringify(overtimeLogs));
+  }, [overtimeLogs]);
+
+  useEffect(() => {
+    localStorage.setItem('dispatch_shift_end_v5', regularShiftEndTime);
+  }, [regularShiftEndTime]);
 
   const getStatusLabel = (status: OrderStatus): string => {
     switch (status) {
@@ -280,15 +365,17 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  // Advance Order Status with full timeline entry (NO SIGNATURE / NO RECEIVER NAME REQUIRED)
+  // Advance Order Status with full timeline entry
   const advanceOrderStatus = useCallback(
     (orderId: string, targetStatus: OrderStatus, options?: AdvanceStatusOptions) => {
       const now = new Date();
-      const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
         now.getDate()
-      ).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(
+      ).padStart(2, '0')}`;
+      const timeOnlyStr = `${String(now.getHours()).padStart(2, '0')}:${String(
         now.getMinutes()
       ).padStart(2, '0')}`;
+      const nowStr = `${todayDateStr} ${timeOnlyStr}`;
 
       setOrders((prevOrders) =>
         prevOrders.map((order) => {
@@ -306,9 +393,23 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             status: targetStatus,
             statusLabel: getStatusLabel(targetStatus),
             timestamp: nowStr,
-            updatedBy: options?.updatedBy || order.driver || 'Chofer Responsable',
-            notes: options?.notes || (targetStatus === 'entregado' ? 'Descarga completada y verificada conforme.' : 'Actualización de estado en sistema.'),
-            location: options?.location || (targetStatus === 'en_ruta' ? 'En trayecto hacia destino' : targetStatus === 'en_descarga' ? order.zone : 'Almacén'),
+            updatedBy:
+              options?.updatedBy ||
+              (order.helper && order.helper !== 'Sin Ayudante'
+                ? `${order.driver} (Chofer) & ${order.helper} (Ayudante)`
+                : order.driver || 'Chofer Responsable'),
+            notes:
+              options?.notes ||
+              (targetStatus === 'entregado'
+                ? 'Descarga completada y verificada conforme.'
+                : 'Actualización de estado en sistema.'),
+            location:
+              options?.location ||
+              (targetStatus === 'en_ruta'
+                ? 'En trayecto hacia destino'
+                : targetStatus === 'en_descarga'
+                ? order.zone
+                : 'Almacén'),
             unitsVerified: verifiedTotal,
             durationFromPrevMinutes: duration,
           };
@@ -316,26 +417,46 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           let dispatchedAt = order.dispatchedAt;
           let arrivedAt = order.arrivedAt;
           let deliveredAt = order.deliveredAt;
+          let departureTime = order.departureTime;
+          let arrivalTime = order.arrivalTime;
           let unloadingDurationMinutes = order.unloadingDurationMinutes;
+          let driverOvertimeMinutes = options?.driverOvertimeMinutes ?? order.driverOvertimeMinutes;
+          let helperOvertimeMinutes = options?.helperOvertimeMinutes ?? order.helperOvertimeMinutes;
 
           if (targetStatus === 'en_ruta' && !dispatchedAt) {
             dispatchedAt = nowStr;
+            if (!departureTime) departureTime = timeOnlyStr;
           } else if (targetStatus === 'en_descarga') {
             arrivedAt = nowStr;
           } else if (targetStatus === 'entregado') {
             deliveredAt = nowStr;
+            if (!arrivalTime) arrivalTime = timeOnlyStr;
             if (arrivedAt) {
               unloadingDurationMinutes = calculateMinutesBetween(arrivedAt, nowStr);
             } else if (dispatchedAt) {
               unloadingDurationMinutes = 20;
             }
+            // If overtime wasn't explicitly set, calculate from arrivalTime vs regularShiftEndTime
+            if (driverOvertimeMinutes === undefined && arrivalTime) {
+              const autoOt = calculateOvertimeMinutes(arrivalTime, regularShiftEndTime);
+              if (autoOt > 0) {
+                driverOvertimeMinutes = autoOt;
+                helperOvertimeMinutes =
+                  order.helper && order.helper !== 'Sin Ayudante' ? autoOt : 0;
+              }
+            }
           }
 
           // Update items delivered counts if provided or if delivered
-          const updatedItems = options?.itemsDelivered || order.items.map((it) => ({
-            ...it,
-            unitsDelivered: targetStatus === 'entregado' ? (it.unitsDelivered ?? it.unitsCount) : it.unitsDelivered,
-          }));
+          const updatedItems =
+            options?.itemsDelivered ||
+            order.items.map((it) => ({
+              ...it,
+              unitsDelivered:
+                targetStatus === 'entregado'
+                  ? it.unitsDelivered ?? it.unitsCount
+                  : it.unitsDelivered,
+            }));
 
           const updatedOrder: Order = {
             ...order,
@@ -343,6 +464,10 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             dispatchedAt,
             arrivedAt,
             deliveredAt,
+            departureTime,
+            arrivalTime,
+            driverOvertimeMinutes,
+            helperOvertimeMinutes,
             items: updatedItems,
             unitsDelivered: targetStatus === 'entregado' ? verifiedTotal : order.unitsDelivered,
             delayReason: options?.delayReason ?? order.delayReason,
@@ -396,7 +521,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         );
       }
     },
-    [orders, sendNotification]
+    [orders, regularShiftEndTime, sendNotification]
   );
 
   const quickVerifyUnits = useCallback((orderId: string, count: number) => {
@@ -427,7 +552,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (routeId: string, customTime?: string) => {
       const timeStr =
         customTime ||
-        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
 
       setRoutes((prev) =>
         prev.map((r) =>
@@ -444,8 +569,8 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const route = routes.find((r) => r.id === routeId);
       if (route) {
         sendNotification(
-          `🚦 Salida Registrada: ${route.name}`,
-          `${route.driver} inició ruta a las ${timeStr} (${route.totalUnits} unidades a bordo). Programado: ${route.scheduledDeparture}.`,
+          `🚦 Hora de Salida Registrada: ${route.name}`,
+          `${route.driver} inició ruta a las ${timeStr} (${route.totalUnits} unidades a bordo).`,
           'info',
           { routeId }
         );
@@ -458,32 +583,64 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     (routeId: string, customTime?: string) => {
       const timeStr =
         customTime ||
-        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+        new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+      const targetRoute = routes.find((r) => r.id === routeId);
+      const shiftEnd = targetRoute?.shiftEndTime || regularShiftEndTime || '17:00';
+      const autoOtMins = calculateOvertimeMinutes(timeStr, shiftEnd);
 
       setRoutes((prev) =>
-        prev.map((r) =>
-          r.id === routeId
-            ? {
-                ...r,
-                actualArrival: timeStr,
-                status: 'completada',
-              }
-            : r
-        )
+        prev.map((r) => {
+          if (r.id !== routeId) return r;
+          const hasHelper = r.helper && r.helper !== 'Sin Ayudante';
+          return {
+            ...r,
+            actualArrival: timeStr,
+            driverOvertimeMinutes: autoOtMins > 0 ? autoOtMins : r.driverOvertimeMinutes || 0,
+            helperOvertimeMinutes:
+              autoOtMins > 0 && hasHelper ? autoOtMins : r.helperOvertimeMinutes || 0,
+            status: 'completada',
+          };
+        })
       );
 
-      const route = routes.find((r) => r.id === routeId);
-      if (route) {
+      if (targetRoute) {
+        if (autoOtMins > 0) {
+          const todayStr =
+            targetRoute.dispatchDate ||
+            new Date().toISOString().split('T')[0];
+          const hasHelper = targetRoute.helper && targetRoute.helper !== 'Sin Ayudante';
+          const newLog: OvertimeLog = {
+            id: `ot-${Date.now()}`,
+            date: todayStr,
+            routeId: targetRoute.id,
+            zone: targetRoute.zone,
+            driver: targetRoute.driver,
+            helper: targetRoute.helper || 'Sin Ayudante',
+            departureTime: targetRoute.actualDeparture || targetRoute.scheduledDeparture,
+            arrivalTime: timeStr,
+            regularEndTime: shiftEnd,
+            driverOvertimeMinutes: autoOtMins,
+            helperOvertimeMinutes: hasHelper ? autoOtMins : 0,
+            notes: `Calculado automáticamente al registrar hora de llegada (${timeStr} vs turno ${shiftEnd}).`,
+          };
+          setOvertimeLogs((prev) => [newLog, ...prev]);
+        }
+
         confetti({ particleCount: 60, spread: 80, origin: { y: 0.5 } });
         sendNotification(
-          `🏁 Fin de Ruta Registrado: ${route.name}`,
-          `${route.driver} reportó llegada/regreso a las ${timeStr}. Eficiencia de transporte procesada.`,
+          `🏁 Hora de Llegada Registrada: ${targetRoute.name}`,
+          `${targetRoute.driver} reportó llegada a las ${timeStr}.${
+            autoOtMins > 0
+              ? ` Tiempo extra registrado: ${formatOvertimeDuration(autoOtMins)}.`
+              : ''
+          }`,
           'success',
           { routeId }
         );
       }
     },
-    [routes, sendNotification]
+    [routes, regularShiftEndTime, sendNotification]
   );
 
   const updateRouteStatus = useCallback(
@@ -495,6 +652,24 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 ...r,
                 status,
                 notes: notes || r.notes,
+              }
+            : r
+        )
+      );
+    },
+    []
+  );
+
+  const updateRouteOvertime = useCallback(
+    (routeId: string, driverOvertimeMinutes: number, helperOvertimeMinutes: number, notes?: string) => {
+      setRoutes((prev) =>
+        prev.map((r) =>
+          r.id === routeId
+            ? {
+                ...r,
+                driverOvertimeMinutes: Math.max(0, driverOvertimeMinutes),
+                helperOvertimeMinutes: Math.max(0, helperOvertimeMinutes),
+                overtimeNotes: notes ?? r.overtimeNotes,
               }
             : r
         )
@@ -526,6 +701,31 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const deleteRoute = useCallback((id: string) => {
     setRoutes((prev) => prev.filter((r) => r.id !== id));
+  }, []);
+
+  // Overtime Log CRUD
+  const addOvertimeLog = useCallback(
+    (logData: Omit<OvertimeLog, 'id'>) => {
+      const newLog: OvertimeLog = {
+        ...logData,
+        id: `ot-${Date.now()}`,
+      };
+      setOvertimeLogs((prev) => [newLog, ...prev]);
+      sendNotification(
+        '⏱️ Hora Extra Registrada',
+        `Chofer ${logData.driver} (${formatOvertimeDuration(logData.driverOvertimeMinutes)}) y Ayudante ${logData.helper} (${formatOvertimeDuration(logData.helperOvertimeMinutes)}).`,
+        'info'
+      );
+    },
+    [sendNotification]
+  );
+
+  const updateOvertimeLog = useCallback((updated: OvertimeLog) => {
+    setOvertimeLogs((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+  }, []);
+
+  const deleteOvertimeLog = useCallback((id: string) => {
+    setOvertimeLogs((prev) => prev.filter((l) => l.id !== id));
   }, []);
 
   // Catalog CRUD
@@ -564,6 +764,15 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setCalibres((prev) => prev.filter((c) => c !== cal));
   }, []);
 
+  const addAluzincColor = useCallback((color: string) => {
+    if (!color.trim()) return;
+    setAluzincColors((prev) => (prev.includes(color.trim()) ? prev : [...prev, color.trim()]));
+  }, []);
+
+  const deleteAluzincColor = useCallback((color: string) => {
+    setAluzincColors((prev) => prev.filter((c) => c !== color));
+  }, []);
+
   const addDriver = useCallback((driverName: string) => {
     if (!driverName.trim()) return;
     setDrivers((prev) => (prev.includes(driverName.trim()) ? prev : [...prev, driverName.trim()]));
@@ -573,12 +782,22 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDrivers((prev) => prev.filter((d) => d !== driverName));
   }, []);
 
+  const addHelper = useCallback((helperName: string) => {
+    if (!helperName.trim()) return;
+    setHelpers((prev) => (prev.includes(helperName.trim()) ? prev : [...prev, helperName.trim()]));
+  }, []);
+
+  const deleteHelper = useCallback((helperName: string) => {
+    setHelpers((prev) => prev.filter((h) => h !== helperName));
+  }, []);
+
   const addOrder = useCallback(
     (orderData: Omit<Order, 'id' | 'createdAt' | 'dispatchedAt' | 'arrivedAt' | 'deliveredAt' | 'history'>) => {
       const now = new Date();
-      const nowStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
         now.getDate()
-      ).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(
+      ).padStart(2, '0')}`;
+      const nowStr = `${todayStr} ${String(now.getHours()).padStart(2, '0')}:${String(
         now.getMinutes()
       ).padStart(2, '0')}`;
 
@@ -590,16 +809,24 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           ? orderData.items.reduce((acc, it) => acc + (it.unitsCount || 0), 0)
           : orderData.unitsCount || 1;
 
-      // Summary description of items
+      // Summary description of items including Aluzinc color
       const itemsSummary =
         orderData.itemsDescription ||
         orderData.items
-          .map((it) => `${it.unitsCount} ${it.productType}${it.calibre ? ` (${it.calibre})` : ''}`)
+          .map((it) => {
+            const colorPart =
+              it.color && it.color !== 'No aplica' ? ` [${it.color}]` : '';
+            const calPart = it.calibre ? ` (${it.calibre})` : '';
+            return `${it.unitsCount} ${it.productType}${colorPart}${calPart}`;
+          })
           .join(', ');
+
+      const dispatchDateVal = orderData.dispatchDate || todayStr;
 
       const newOrder: Order = {
         ...orderData,
         id: newId,
+        dispatchDate: dispatchDateVal,
         createdAt: nowStr,
         dispatchedAt: null,
         arrivedAt: null,
@@ -614,13 +841,40 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             statusLabel: 'Pedido Creado en Almacén',
             timestamp: nowStr,
             updatedBy: 'Control de Despacho',
-            notes: `Orden registrada con ${calculatedUnitsCount} unidades combinadas [${itemsSummary}] para entrega en ${orderData.zone}.`,
+            notes: `Orden programada para despacho el ${dispatchDateVal} con ${calculatedUnitsCount} unidades [${itemsSummary}] hacia ${orderData.zone}. Chofer: ${orderData.driver}${
+              orderData.helper && orderData.helper !== 'Sin Ayudante'
+                ? ` | Ayudante: ${orderData.helper}`
+                : ''
+            }.`,
             unitsVerified: calculatedUnitsCount,
           },
         ],
       };
 
       setOrders((prev) => [newOrder, ...prev]);
+
+      // If overtime minutes were already entered on creation, also log them
+      if (
+        (orderData.driverOvertimeMinutes && orderData.driverOvertimeMinutes > 0) ||
+        (orderData.helperOvertimeMinutes && orderData.helperOvertimeMinutes > 0)
+      ) {
+        const otEntry: OvertimeLog = {
+          id: `ot-${Date.now()}`,
+          date: dispatchDateVal,
+          orderId: newId,
+          routeId: orderData.routeId,
+          zone: orderData.zone,
+          driver: orderData.driver,
+          helper: orderData.helper || 'Sin Ayudante',
+          departureTime: orderData.departureTime || '08:00',
+          arrivalTime: orderData.arrivalTime || '18:00',
+          regularEndTime: regularShiftEndTime,
+          driverOvertimeMinutes: orderData.driverOvertimeMinutes || 0,
+          helperOvertimeMinutes: orderData.helperOvertimeMinutes || 0,
+          notes: orderData.overtimeNotes || `Horas extras registradas en el pedido ${newId}.`,
+        };
+        setOvertimeLogs((prev) => [otEntry, ...prev]);
+      }
 
       // Update route units and stops count
       if (orderData.routeId) {
@@ -639,14 +893,14 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       sendNotification(
         `📦 Nuevo Despacho: ${newId}`,
-        `Destino: ${orderData.zone} - ${calculatedUnitsCount} unidades asignadas a ${orderData.driver}.`,
+        `Fecha: ${dispatchDateVal} • Destino: ${orderData.zone} - ${calculatedUnitsCount} uds asignadas a ${orderData.driver}.`,
         'info',
         { orderId: newId }
       );
 
       return newOrder;
     },
-    [sendNotification]
+    [regularShiftEndTime, sendNotification]
   );
 
   const updateOrder = useCallback((updated: Order) => {
@@ -663,30 +917,43 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDestinations(INITIAL_DESTINATIONS);
     setProductPresentations(INITIAL_PRODUCT_PRESENTATIONS);
     setCalibres(INITIAL_CALIBRES);
+    setAluzincColors(INITIAL_ALUZINC_COLORS);
     setDrivers(INITIAL_DRIVERS);
-    localStorage.removeItem('dispatch_orders_v4');
-    localStorage.removeItem('dispatch_routes_v4');
-    localStorage.removeItem('dispatch_destinations_v4');
-    localStorage.removeItem('dispatch_products_v4');
-    localStorage.removeItem('dispatch_calibres_v4');
-    localStorage.removeItem('dispatch_drivers_v4');
+    setHelpers(INITIAL_HELPERS);
+    setOvertimeLogs(INITIAL_OVERTIME_LOGS);
+    localStorage.removeItem('dispatch_orders_v6');
+    localStorage.removeItem('dispatch_routes_v5');
+    localStorage.removeItem('dispatch_destinations_v5');
+    localStorage.removeItem('dispatch_products_v6');
+    localStorage.removeItem('dispatch_calibres_v5');
+    localStorage.removeItem('dispatch_aluzinc_colors_v6');
+    localStorage.removeItem('dispatch_drivers_v5');
+    localStorage.removeItem('dispatch_helpers_v5');
+    localStorage.removeItem('dispatch_overtime_v5');
   }, []);
 
   const clearAllToZero = useCallback(
     (options?: { resetRoutes?: boolean }) => {
       setOrders([]);
-      localStorage.setItem('dispatch_orders_v4', JSON.stringify([]));
+      setOvertimeLogs([]);
+      localStorage.setItem('dispatch_orders_v6', JSON.stringify([]));
+      localStorage.setItem('dispatch_overtime_v5', JSON.stringify([]));
 
       if (options?.resetRoutes) {
+        const todayStr = new Date().toISOString().split('T')[0];
         setRoutes((prev) =>
           prev.map((r) => ({
             ...r,
+            dispatchDate: todayStr,
             targetStops: 0,
             completedStops: 0,
             totalUnits: 0,
             deliveredUnits: 0,
             actualDeparture: null,
             actualArrival: null,
+            driverOvertimeMinutes: 0,
+            helperOvertimeMinutes: 0,
+            overtimeNotes: '',
             status: 'programada' as const,
           }))
         );
@@ -696,7 +963,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       sendNotification(
         '🚀 Sistema Inicializado en Cero',
-        'Se han limpiado todas las órdenes de prueba. El sistema está 100% listo para registrar operaciones reales.',
+        'Se han limpiado todos los pedidos y contadores de horas extras. Listo para tu operación real.',
         'success'
       );
     },
@@ -706,32 +973,39 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const triggerManualPushTest = useCallback(() => {
     sendNotification(
       '🔔 Alerta en Tiempo Real de Prueba',
-      '¡Sistema PWA conectado! Las notificaciones de salida, llegada y entrega de unidades están activas.',
+      '¡Sistema PWA conectado! Las notificaciones de salida, llegada, colores y horas extras están activas.',
       'info'
     );
     triggerHaptic();
   }, [sendNotification, triggerHaptic]);
 
-  // Performance calculations for transportistas
+  // Performance calculations for transportistas & ayudantes
   const driverPerformances = useMemo<DriverPerformance[]>(() => {
-    const driversMap = new Map<string, {
-      vehicle: string;
-      routeId: string;
-      totalOrders: number;
-      deliveredOrders: number;
-      totalUnits: number;
-      deliveredUnits: number;
-      scheduledDeparture: string;
-      actualDeparture: string | null;
-      scheduledArrival: string;
-      actualArrival: string | null;
-      unloadDurations: number[];
-    }>();
+    const driversMap = new Map<
+      string,
+      {
+        helperName: string;
+        vehicle: string;
+        routeId: string;
+        totalOrders: number;
+        deliveredOrders: number;
+        totalUnits: number;
+        deliveredUnits: number;
+        scheduledDeparture: string;
+        actualDeparture: string | null;
+        scheduledArrival: string;
+        actualArrival: string | null;
+        unloadDurations: number[];
+        driverOvertimeMinutes: number;
+        helperOvertimeMinutes: number;
+      }
+    >();
 
     // Initialize all drivers from driver list
     drivers.forEach((d) => {
       const matchRoute = routes.find((r) => r.driver === d);
       driversMap.set(d, {
+        helperName: matchRoute?.helper || 'José',
         vehicle: matchRoute ? matchRoute.vehicle : 'Camión Asignado',
         routeId: matchRoute ? matchRoute.id : 'RUT-01',
         totalOrders: 0,
@@ -740,10 +1014,24 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deliveredUnits: 0,
         scheduledDeparture: matchRoute ? matchRoute.scheduledDeparture : '08:00',
         actualDeparture: matchRoute ? matchRoute.actualDeparture : null,
-        scheduledArrival: matchRoute ? matchRoute.scheduledArrival : '14:00',
+        scheduledArrival: matchRoute ? matchRoute.scheduledArrival : '17:00',
         actualArrival: matchRoute ? matchRoute.actualArrival : null,
         unloadDurations: [],
+        driverOvertimeMinutes: 0,
+        helperOvertimeMinutes: 0,
       });
+    });
+
+    // Sum overtime from overtimeLogs
+    overtimeLogs.forEach((log) => {
+      const entry = driversMap.get(log.driver);
+      if (entry) {
+        entry.driverOvertimeMinutes += log.driverOvertimeMinutes || 0;
+        entry.helperOvertimeMinutes += log.helperOvertimeMinutes || 0;
+        if (log.helper && log.helper !== 'Sin Ayudante') {
+          entry.helperName = log.helper;
+        }
+      }
     });
 
     // Populate from orders
@@ -752,6 +1040,9 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (entry) {
         entry.totalOrders++;
         entry.totalUnits += o.unitsCount;
+        if (o.helper && o.helper !== 'Sin Ayudante') {
+          entry.helperName = o.helper;
+        }
         if (o.status === 'entregado') {
           entry.deliveredOrders++;
           entry.deliveredUnits += o.unitsDelivered ?? o.unitsCount;
@@ -761,6 +1052,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       } else {
         driversMap.set(o.driver, {
+          helperName: o.helper || 'Sin Ayudante',
           vehicle: 'Vehículo Asignado',
           routeId: o.routeId || 'RUT-XX',
           totalOrders: 1,
@@ -769,9 +1061,11 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           deliveredUnits: o.status === 'entregado' ? (o.unitsDelivered ?? o.unitsCount) : 0,
           scheduledDeparture: '08:00',
           actualDeparture: o.dispatchedAt ? o.dispatchedAt.slice(11, 16) : null,
-          scheduledArrival: '14:00',
+          scheduledArrival: '17:00',
           actualArrival: o.deliveredAt ? o.deliveredAt.slice(11, 16) : null,
           unloadDurations: o.unloadingDurationMinutes ? [o.unloadingDurationMinutes] : [],
+          driverOvertimeMinutes: o.driverOvertimeMinutes || 0,
+          helperOvertimeMinutes: o.helperOvertimeMinutes || 0,
         });
       }
     });
@@ -789,7 +1083,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const actDepMins = parseTimeToMins(data.actualDeparture);
       const depVariance = actDepMins !== null ? actDepMins - schedDepMins : 0;
 
-      const schedArrMins = parseTimeToMins(data.scheduledArrival) ?? 840;
+      const schedArrMins = parseTimeToMins(data.scheduledArrival) ?? 1020;
       const actArrMins = parseTimeToMins(data.actualArrival);
       const arrVariance = actArrMins !== null ? actArrMins - schedArrMins : 0;
 
@@ -802,7 +1096,7 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       let score = 100;
       if (depVariance > 10) score -= Math.min(25, (depVariance - 10) * 1.5);
-      if (arrVariance > 15) score -= Math.min(25, (arrVariance - 15) * 1.2);
+      if (arrVariance > 30) score -= Math.min(20, (arrVariance - 30) * 0.5);
       if (data.totalUnits > 0) {
         const unitAccuracy = data.deliveredUnits / data.totalUnits;
         score = score * 0.6 + unitAccuracy * 40;
@@ -815,14 +1109,15 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         status = 'Pendiente salida';
       } else if (data.actualArrival) {
         status = 'Completado con éxito';
-      } else if (depVariance > 25 || arrVariance > 30) {
+      } else if (depVariance > 25) {
         status = 'Retraso crítico';
-      } else if (depVariance > 10 || arrVariance > 15) {
+      } else if (depVariance > 10) {
         status = 'Retraso leve';
       }
 
       results.push({
         driverName,
+        helperName: data.helperName,
         vehicle: data.vehicle,
         routeId: data.routeId,
         totalOrders: data.totalOrders,
@@ -836,13 +1131,15 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         departureVarianceMinutes: depVariance,
         arrivalVarianceMinutes: arrVariance,
         avgUnloadMinutes: avgUnload,
+        driverOvertimeMinutes: data.driverOvertimeMinutes,
+        helperOvertimeMinutes: data.helperOvertimeMinutes,
         efficiencyScore: finalScore,
         status,
       });
     });
 
     return results.sort((a, b) => b.efficiencyScore - a.efficiencyScore);
-  }, [routes, orders, drivers]);
+  }, [routes, orders, drivers, overtimeLogs]);
 
   // KPI calculations
   const kpis = useMemo(() => {
@@ -883,6 +1180,15 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         ? Math.round(unloadDurations.reduce((a, b) => a + b, 0) / unloadDurations.length)
         : 22;
 
+    const totalDriverOvertimeMinutes = overtimeLogs.reduce(
+      (acc, l) => acc + (l.driverOvertimeMinutes || 0),
+      0
+    );
+    const totalHelperOvertimeMinutes = overtimeLogs.reduce(
+      (acc, l) => acc + (l.helperOvertimeMinutes || 0),
+      0
+    );
+
     return {
       totalOrders,
       pendingCount,
@@ -894,8 +1200,10 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       totalUnitsDelivered,
       efficiencyRate,
       avgUnloadMinutes,
+      totalDriverOvertimeMinutes,
+      totalHelperOvertimeMinutes,
     };
-  }, [orders]);
+  }, [orders, overtimeLogs]);
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -907,12 +1215,15 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         o.client.toLowerCase().includes(query) ||
         o.address.toLowerCase().includes(query) ||
         o.driver.toLowerCase().includes(query) ||
+        (o.helper && o.helper.toLowerCase().includes(query)) ||
         o.zone.toLowerCase().includes(query) ||
+        (o.dispatchDate && o.dispatchDate.includes(query)) ||
         (o.itemsDescription && o.itemsDescription.toLowerCase().includes(query)) ||
         o.items.some(
           (it) =>
             it.productType.toLowerCase().includes(query) ||
-            (it.calibre && it.calibre.toLowerCase().includes(query))
+            (it.calibre && it.calibre.toLowerCase().includes(query)) ||
+            (it.color && it.color.toLowerCase().includes(query))
         );
 
       const matchZone = selectedZone === 'ALL' || o.zone === selectedZone;
@@ -923,10 +1234,12 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         (selectedStatus === 'en_ruta' && (o.status === 'en_ruta' || o.status === 'en_descarga')) ||
         o.status === selectedStatus;
       const matchDriver = selectedDriver === 'ALL' || o.driver === selectedDriver;
+      const matchDate =
+        selectedDispatchDate === 'ALL' || o.dispatchDate === selectedDispatchDate;
 
-      return matchSearch && matchZone && matchPriority && matchStatus && matchDriver;
+      return matchSearch && matchZone && matchPriority && matchStatus && matchDriver && matchDate;
     });
-  }, [orders, searchQuery, selectedZone, selectedPriority, selectedStatus, selectedDriver]);
+  }, [orders, searchQuery, selectedZone, selectedPriority, selectedStatus, selectedDriver, selectedDispatchDate]);
 
   return (
     <DispatchContext.Provider
@@ -936,7 +1249,12 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         destinations,
         productPresentations,
         calibres,
+        aluzincColors,
         drivers,
+        helpers,
+        overtimeLogs,
+        regularShiftEndTime,
+        setRegularShiftEndTime,
         searchQuery,
         setSearchQuery,
         selectedZone,
@@ -947,6 +1265,8 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setSelectedStatus,
         selectedDriver,
         setSelectedDriver,
+        selectedDispatchDate,
+        setSelectedDispatchDate,
         quickDriverMode,
         setQuickDriverMode,
         activeDriverFilter,
@@ -960,9 +1280,13 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updateRouteDeparture,
         updateRouteArrival,
         updateRouteStatus,
+        updateRouteOvertime,
         addRoute,
         updateRoute,
         deleteRoute,
+        addOvertimeLog,
+        updateOvertimeLog,
+        deleteOvertimeLog,
         addDestination,
         updateDestination,
         deleteDestination,
@@ -971,8 +1295,12 @@ export const DispatchProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         deleteProductPresentation,
         addCalibre,
         deleteCalibre,
+        addAluzincColor,
+        deleteAluzincColor,
         addDriver,
         deleteDriver,
+        addHelper,
+        deleteHelper,
         resetAllData,
         clearAllToZero,
         driverPerformances,

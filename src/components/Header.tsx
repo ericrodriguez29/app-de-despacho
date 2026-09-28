@@ -5,6 +5,7 @@ import {
   Plus,
   Zap,
   Gauge,
+  Clock,
   Wifi,
   WifiOff,
   BellRing,
@@ -18,6 +19,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 interface HeaderProps {
   onOpenNewOrder: () => void;
   onOpenRoutesManager: () => void;
+  onOpenOvertimeManager: () => void;
   onOpenNotifications: () => void;
   onOpenScanner: () => void;
   onOpenCatalogSettings: () => void;
@@ -27,6 +29,7 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   onOpenNewOrder,
   onOpenRoutesManager,
+  onOpenOvertimeManager,
   onOpenNotifications,
   onOpenScanner,
   onOpenCatalogSettings,
@@ -60,7 +63,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
-                Conteo de Unidades &bull; Techos y Aceros &bull; Control de Rutas
+                Color de Aluzinc &bull; Fecha de Despacho &bull; Horas Extras Chofer y Ayudante
               </p>
             </div>
           </div>
@@ -68,9 +71,17 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Fast Action Buttons */}
           <div className="flex items-center gap-2 md:hidden">
             <button
+              onClick={onOpenOvertimeManager}
+              className="p-2 bg-slate-800 text-amber-400 border border-amber-500/30 rounded-xl text-xs"
+              title="Medir Horas Extras Chofer y Ayudante"
+            >
+              <Clock className="w-4 h-4" />
+            </button>
+
+            <button
               onClick={onOpenCatalogSettings}
               className="p-2 bg-slate-800 text-sky-400 border border-slate-700 rounded-xl text-xs"
-              title="Destinos & Catálogo"
+              title="Destinos, Colores & Catálogo"
             >
               <Settings2 className="w-4 h-4" />
             </button>
@@ -120,15 +131,37 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
           </div>
 
-          {/* Catalog & Destinations Settings Button */}
+          {/* Catalog, Destinations & Aluzinc Colors Settings Button */}
           <button
             onClick={onOpenCatalogSettings}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-sky-300 hover:text-white border border-slate-700 hover:border-sky-500/40 rounded-xl text-xs font-bold transition shadow-sm"
-            title="Editar Destinos (Jarabacoa, SFM, STGO...) y Productos (Aluzinc, Calibres...)"
+            title="Editar Destinos, Colores de Aluzinc, Productos y Personal"
           >
             <Settings2 className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Destinos & Catálogo</span>
+            <span className="hidden sm:inline">Catálogo & Colores</span>
             <span className="sm:hidden">Catálogo</span>
+          </button>
+
+          {/* Overtime Measurement Button (Horas Extras Chofer y Ayudante) */}
+          <button
+            onClick={onOpenOvertimeManager}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-400 rounded-xl text-xs font-bold transition shadow-sm"
+            title="Medir y Registrar Horas Extras del Chofer y el Ayudante"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Horas Extras</span>
+            <span className="sm:hidden">H. Extra</span>
+          </button>
+
+          {/* Route Efficiency & Salida/Llegada Timetable */}
+          <button
+            onClick={onOpenRoutesManager}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-sky-300 hover:text-white border border-slate-700 hover:border-sky-500/40 rounded-xl text-xs font-bold transition shadow-sm"
+            title="Ver Horarios de Salida/Llegada y Eficiencia de Transportistas"
+          >
+            <Gauge className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">Salida / Llegada</span>
+            <span className="sm:hidden">Rutas</span>
           </button>
 
           {/* Start in Zero (Poner todo en cero) Button */}
@@ -154,17 +187,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Zap className={`w-3.5 h-3.5 ${quickDriverMode ? 'fill-current animate-bounce' : ''}`} />
             <span className="font-extrabold">{quickDriverMode ? 'Modo Chofer (Activo)' : 'Modo Chofer'}</span>
-          </button>
-
-          {/* Route Efficiency & Salida/Llegada Timetable */}
-          <button
-            onClick={onOpenRoutesManager}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-800 text-sky-300 hover:text-white border border-slate-700 hover:border-sky-500/40 rounded-xl text-xs font-bold transition shadow-sm"
-            title="Ver Horarios de Salida/Llegada y Eficiencia de Transportistas"
-          >
-            <Gauge className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Eficiencia & Rutas</span>
-            <span className="sm:hidden">Rutas</span>
           </button>
 
           {/* Barcode Scanner Button */}

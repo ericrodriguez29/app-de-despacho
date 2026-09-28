@@ -19,7 +19,7 @@ import { CatalogSettingsModal } from './components/CatalogSettingsModal';
 import { ClearZeroModal } from './components/ClearZeroModal';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { Order } from './types/dispatch';
-import { Truck, RotateCcw, Settings2, Sparkles } from 'lucide-react';
+import { Truck, RotateCcw, Settings2, Sparkles, Clock } from 'lucide-react';
 
 function DispatchAppContent() {
   const {
@@ -31,6 +31,7 @@ function DispatchAppContent() {
   // Modal States
   const [isNewOrderOpen, setIsNewOrderOpen] = useState(false);
   const [isRoutesManagerOpen, setIsRoutesManagerOpen] = useState(false);
+  const [routesModalInitialTab, setRoutesModalInitialTab] = useState<'routes' | 'overtime'>('routes');
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isCatalogSettingsOpen, setIsCatalogSettingsOpen] = useState(false);
@@ -39,6 +40,16 @@ function DispatchAppContent() {
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
   const [selectedOrderHistory, setSelectedOrderHistory] = useState<Order | null>(null);
   const [selectedOrderConfirmation, setSelectedOrderConfirmation] = useState<Order | null>(null);
+
+  const handleOpenRoutesTab = () => {
+    setRoutesModalInitialTab('routes');
+    setIsRoutesManagerOpen(true);
+  };
+
+  const handleOpenOvertimeTab = () => {
+    setRoutesModalInitialTab('overtime');
+    setIsRoutesManagerOpen(true);
+  };
 
   const handleOpenHistory = (order: Order) => {
     setSelectedOrderHistory(order);
@@ -61,7 +72,8 @@ function DispatchAppContent() {
       {/* Top Application Navigation */}
       <Header
         onOpenNewOrder={() => setIsNewOrderOpen(true)}
-        onOpenRoutesManager={() => setIsRoutesManagerOpen(true)}
+        onOpenRoutesManager={handleOpenRoutesTab}
+        onOpenOvertimeManager={handleOpenOvertimeTab}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         onOpenScanner={() => setIsScannerOpen(true)}
         onOpenCatalogSettings={() => setIsCatalogSettingsOpen(true)}
@@ -81,7 +93,7 @@ function DispatchAppContent() {
           /* STANDARD DISPATCH LOGISTICS CONTROL BOARD */
           <>
             {/* KPI Metrics Banner */}
-            <KPIBanner />
+            <KPIBanner onOpenOvertime={handleOpenOvertimeTab} />
 
             {/* Filter and Search Bar */}
             <FilterBar />
@@ -110,6 +122,7 @@ function DispatchAppContent() {
       <RouteManagerModal
         isOpen={isRoutesManagerOpen}
         onClose={() => setIsRoutesManagerOpen(false)}
+        initialTab={routesModalInitialTab}
       />
 
       <CatalogSettingsModal
@@ -160,11 +173,19 @@ function DispatchAppContent() {
           <div className="flex items-center gap-2">
             <Truck className="w-4 h-4 text-sky-400" />
             <span className="font-semibold text-slate-400">
-              Dispatch Logistics Pro PWA &bull; Conteo de Unidades &bull; Techos & Aceros &bull; Control de Rutas
+              Dispatch Logistics Pro PWA &bull; Color Aluzinc &bull; Fecha de Despacho &bull; Horas Extras Chofer y Ayudante
             </span>
           </div>
 
           <div className="flex items-center flex-wrap gap-3 sm:gap-4">
+            <button
+              onClick={handleOpenOvertimeTab}
+              className="text-amber-400 hover:text-amber-300 transition flex items-center gap-1 font-bold"
+              title="Medir Horas Extras del Chofer y el Ayudante"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Horas Extras</span>
+            </button>
             <button
               onClick={() => setIsClearZeroOpen(true)}
               className="text-rose-400 hover:text-rose-300 transition flex items-center gap-1 font-bold"
@@ -178,7 +199,7 @@ function DispatchAppContent() {
               className="text-sky-400 hover:text-sky-300 transition flex items-center gap-1 font-semibold"
             >
               <Settings2 className="w-3.5 h-3.5" />
-              <span>Editar Destinos & Catálogo</span>
+              <span>Catálogo & Colores</span>
             </button>
             <button
               onClick={resetAllData}

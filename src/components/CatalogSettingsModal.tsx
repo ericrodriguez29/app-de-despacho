@@ -10,13 +10,14 @@ import {
   Check,
   Tag,
   User,
-  Truck,
+  Users,
+  Palette,
   Sparkles,
   RotateCcw,
   ShieldCheck,
 } from 'lucide-react';
-import { DestinationZone, ProductPresentation } from '../types/dispatch';
 import { useDispatch } from '../context/DispatchContext';
+import { getColorSwatch } from '../data/initialData';
 
 interface CatalogSettingsModalProps {
   isOpen: boolean;
@@ -39,15 +40,23 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
     calibres,
     addCalibre,
     deleteCalibre,
+    aluzincColors,
+    addAluzincColor,
+    deleteAluzincColor,
     drivers,
     addDriver,
     deleteDriver,
+    helpers,
+    addHelper,
+    deleteHelper,
     clearAllToZero,
     resetAllData,
     orders,
   } = useDispatch();
 
-  const [activeTab, setActiveTab] = useState<'destinations' | 'products' | 'calibres' | 'drivers' | 'reset'>('destinations');
+  const [activeTab, setActiveTab] = useState<
+    'destinations' | 'products' | 'colors' | 'calibres' | 'drivers' | 'reset'
+  >('destinations');
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
 
   // Destination inputs
@@ -61,15 +70,21 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
   const [newProdName, setNewProdName] = useState('');
   const [newProdCalibreReq, setNewProdCalibreReq] = useState(true);
   const [newProdDefaultCal, setNewProdDefaultCal] = useState('Calibre 26 (0.45 mm)');
+  const [newProdDefaultColor, setNewProdDefaultColor] = useState('Azul liso');
   const [editingProdId, setEditingProdId] = useState<string | null>(null);
   const [editProdName, setEditProdName] = useState('');
   const [editProdDefaultCal, setEditProdDefaultCal] = useState('');
+  const [editProdDefaultColor, setEditProdDefaultColor] = useState('');
+
+  // Color input
+  const [newColorName, setNewColorName] = useState('');
 
   // Calibre input
   const [newCalibreName, setNewCalibreName] = useState('');
 
-  // Driver input
+  // Driver & Helper inputs
   const [newDriverName, setNewDriverName] = useState('');
+  const [newHelperName, setNewHelperName] = useState('');
 
   if (!isOpen) return null;
 
@@ -103,6 +118,8 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
       name: newProdName.trim(),
       calibreRequired: newProdCalibreReq,
       defaultCalibre: newProdDefaultCal,
+      defaultColor: newProdDefaultColor,
+      hasColor: newProdDefaultColor !== 'No aplica',
     });
     setNewProdName('');
   };
@@ -114,8 +131,18 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
       name: editProdName.trim(),
       calibreRequired: true,
       defaultCalibre: editProdDefaultCal,
+      defaultColor: editProdDefaultColor,
+      hasColor: editProdDefaultColor !== 'No aplica',
     });
     setEditingProdId(null);
+  };
+
+  // Handlers for Aluzinc Colors
+  const handleAddColor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newColorName.trim()) return;
+    addAluzincColor(newColorName.trim());
+    setNewColorName('');
   };
 
   // Handlers for Calibres
@@ -126,7 +153,7 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
     setNewCalibreName('');
   };
 
-  // Handlers for Drivers
+  // Handlers for Drivers & Helpers
   const handleAddDrv = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDriverName.trim()) return;
@@ -134,9 +161,16 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
     setNewDriverName('');
   };
 
+  const handleAddHlp = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newHelperName.trim()) return;
+    addHelper(newHelperName.trim());
+    setNewHelperName('');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-3 sm:p-5 animate-fade-in overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-3xl rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 relative max-h-[92vh] flex flex-col">
+      <div className="bg-slate-900 border border-slate-800 w-full max-w-4xl rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 relative max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="flex justify-between items-start border-b border-slate-800 pb-4 shrink-0">
           <div>
@@ -145,11 +179,11 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                 <Settings2 className="w-5 h-5" />
               </span>
               <h2 className="text-xl font-black text-white">
-                Administrador de Destinos, Productos & Choferes
+                Catálogo de Destinos, Productos, Colores de Aluzinc & Personal
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Personaliza los destinos/zonas de entrega, los tipos de presentación/productos, calibres y transportistas.
+              Personaliza los destinos, productos, colores de Aluzinc, calibres, choferes y ayudantes.
             </p>
           </div>
 
@@ -188,6 +222,18 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('colors')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition ${
+              activeTab === 'colors'
+                ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/25'
+                : 'bg-slate-800/80 text-sky-300 hover:text-white'
+            }`}
+          >
+            <Palette className="w-3.5 h-3.5" />
+            <span>Colores Aluzinc ({aluzincColors.length})</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('calibres')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition ${
               activeTab === 'calibres'
@@ -207,8 +253,8 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                 : 'bg-slate-800/80 text-slate-400 hover:text-white'
             }`}
           >
-            <User className="w-3.5 h-3.5" />
-            <span>Choferes ({drivers.length})</span>
+            <Users className="w-3.5 h-3.5" />
+            <span>Choferes & Ayudantes</span>
           </button>
 
           <button
@@ -227,7 +273,10 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
         {/* Tab 1: DESTINATIONS & ZONES */}
         {activeTab === 'destinations' && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
-            <form onSubmit={handleAddDest} className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row gap-2">
+            <form
+              onSubmit={handleAddDest}
+              className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row gap-2"
+            >
               <input
                 type="text"
                 required
@@ -296,7 +345,9 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                           <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
                           <span>{dest.name}</span>
                         </h4>
-                        <p className="text-[11px] text-slate-400 pl-5">{dest.cityRegion || 'Cibao Central'}</p>
+                        <p className="text-[11px] text-slate-400 pl-5">
+                          {dest.cityRegion || 'Cibao Central'}
+                        </p>
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
@@ -330,19 +381,33 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
         {/* Tab 2: PRODUCT PRESENTATIONS */}
         {activeTab === 'products' && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
-            <form onSubmit={handleAddProd} className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row gap-2">
+            <form
+              onSubmit={handleAddProd}
+              className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row gap-2"
+            >
               <input
                 type="text"
                 required
-                placeholder="Nombre del Producto (Ej: Caballete, Aluzinc, Aluteja, Tolas...)"
+                placeholder="Nombre del Producto (Ej: Aluzinc, Caballete, Tolas...)"
                 value={newProdName}
                 onChange={(e) => setNewProdName(e.target.value)}
                 className="flex-grow bg-slate-800 text-white px-3 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500 font-semibold"
               />
               <select
+                value={newProdDefaultColor}
+                onChange={(e) => setNewProdDefaultColor(e.target.value)}
+                className="sm:w-44 bg-slate-800 text-sky-300 font-bold px-3 py-2 rounded-xl border border-slate-700"
+              >
+                {aluzincColors.map((col) => (
+                  <option key={col} value={col}>
+                    Color: {col}
+                  </option>
+                ))}
+              </select>
+              <select
                 value={newProdDefaultCal}
                 onChange={(e) => setNewProdDefaultCal(e.target.value)}
-                className="sm:w-56 bg-slate-800 text-slate-200 px-3 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-amber-500"
+                className="sm:w-48 bg-slate-800 text-slate-200 px-3 py-2 rounded-xl border border-slate-700"
               >
                 {calibres.map((c) => (
                   <option key={c} value={c}>
@@ -373,6 +438,17 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                         onChange={(e) => setEditProdName(e.target.value)}
                         className="bg-slate-900 text-white px-2 py-1.5 rounded-lg border border-amber-500 text-xs font-bold"
                       />
+                      <select
+                        value={editProdDefaultColor}
+                        onChange={(e) => setEditProdDefaultColor(e.target.value)}
+                        className="bg-slate-900 text-sky-300 px-2 py-1 rounded-lg border border-slate-700 text-xs"
+                      >
+                        {aluzincColors.map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
                       <select
                         value={editProdDefaultCal}
                         onChange={(e) => setEditProdDefaultCal(e.target.value)}
@@ -409,7 +485,13 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                           <span>{prod.name}</span>
                         </h4>
                         <p className="text-[11px] text-slate-400 pl-5 font-mono">
-                          Calibre predeterminado: <strong className="text-amber-300">{prod.defaultCalibre || 'Calibre 26'}</strong>
+                          Calibre: <strong className="text-amber-300">{prod.defaultCalibre || 'Calibre 26'}</strong>
+                          {prod.defaultColor && prod.defaultColor !== 'No aplica' && (
+                            <>
+                              {' '}
+                              &bull; Color: <strong className="text-sky-300">{prod.defaultColor}</strong>
+                            </>
+                          )}
                         </p>
                       </div>
 
@@ -419,6 +501,7 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                             setEditingProdId(prod.id);
                             setEditProdName(prod.name);
                             setEditProdDefaultCal(prod.defaultCalibre || 'Calibre 26 (0.45 mm)');
+                            setEditProdDefaultColor(prod.defaultColor || 'No aplica');
                           }}
                           className="p-1.5 bg-slate-700/80 hover:bg-slate-700 text-slate-300 hover:text-amber-400 rounded-lg transition"
                           title="Editar producto"
@@ -441,10 +524,65 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
           </div>
         )}
 
-        {/* Tab 3: CALIBRES & GAUGES */}
+        {/* Tab 3: COLORES DE ALUZINC */}
+        {activeTab === 'colors' && (
+          <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
+            <form
+              onSubmit={handleAddColor}
+              className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex gap-2"
+            >
+              <input
+                type="text"
+                required
+                placeholder="Nuevo Color de Aluzinc / Lámina (Ej: Azul Cielo, Verde Esmeralda, Terracota...)"
+                value={newColorName}
+                onChange={(e) => setNewColorName(e.target.value)}
+                className="flex-grow bg-slate-800 text-white px-3 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-sky-500 font-semibold"
+              />
+              <button
+                type="submit"
+                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black rounded-xl transition shadow-md flex items-center gap-1 shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Agregar Color</span>
+              </button>
+            </form>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+              {aluzincColors.map((col) => {
+                const swatch = getColorSwatch(col);
+                return (
+                  <div
+                    key={col}
+                    className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between gap-2 shadow-sm"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${swatch.dotClass}`} />
+                      <span className="font-bold text-xs text-white">{col}</span>
+                    </div>
+                    {aluzincColors.length > 1 && (
+                      <button
+                        onClick={() => deleteAluzincColor(col)}
+                        className="p-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                        title="Eliminar color"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 4: CALIBRES & GAUGES */}
         {activeTab === 'calibres' && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
-            <form onSubmit={handleAddCal} className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex gap-2">
+            <form
+              onSubmit={handleAddCal}
+              className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex gap-2"
+            >
               <input
                 type="text"
                 required
@@ -482,55 +620,108 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
           </div>
         )}
 
-        {/* Tab 4: DRIVERS (Carlos, Danilo, Nelson) */}
+        {/* Tab 5: DRIVERS & HELPERS (Choferes y Ayudantes) */}
         {activeTab === 'drivers' && (
-          <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
-            <form onSubmit={handleAddDrv} className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 flex gap-2">
-              <input
-                type="text"
-                required
-                placeholder="Nombre del Chofer / Transportista (Ej: Carlos, Danilo, Nelson...)"
-                value={newDriverName}
-                onChange={(e) => setNewDriverName(e.target.value)}
-                className="flex-grow bg-slate-800 text-white px-3 py-2 rounded-xl border border-slate-700 focus:outline-none focus:border-emerald-500 font-semibold"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition shadow-md flex items-center gap-1 shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Agregar Chofer</span>
-              </button>
-            </form>
+          <div className="space-y-5 overflow-y-auto pr-1 flex-grow text-xs">
+            {/* Choferes Section */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                <User className="w-4 h-4" />
+                <span>Choferes / Transportistas ({drivers.length})</span>
+              </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {drivers.map((drv) => (
-                <div
-                  key={drv}
-                  className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-3.5 flex items-center justify-between gap-2 shadow-sm hover:border-emerald-500/40 transition"
+              <form
+                onSubmit={handleAddDrv}
+                className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex gap-2"
+              >
+                <input
+                  type="text"
+                  required
+                  placeholder="Nombre del Chofer (Ej: Carlos, Danilo, Nelson...)"
+                  value={newDriverName}
+                  onChange={(e) => setNewDriverName(e.target.value)}
+                  className="flex-grow bg-slate-800 text-white px-3 py-2 rounded-xl border border-slate-700 font-semibold"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl transition flex items-center gap-1 shrink-0"
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 font-black flex items-center justify-center text-xs">
-                      🚛
-                    </div>
-                    <span className="font-extrabold text-sm text-white">{drv}</span>
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Chofer</span>
+                </button>
+              </form>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {drivers.map((drv) => (
+                  <div
+                    key={drv}
+                    className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between gap-2"
+                  >
+                    <span className="font-extrabold text-sm text-amber-300">🚛 {drv}</span>
+                    {drivers.length > 1 && (
+                      <button
+                        onClick={() => deleteDriver(drv)}
+                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
-                  {drivers.length > 1 && (
-                    <button
-                      onClick={() => deleteDriver(drv)}
-                      className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
-                      title="Eliminar chofer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
+                ))}
+              </div>
+            </div>
+
+            {/* Ayudantes Section */}
+            <div className="space-y-3 pt-3 border-t border-slate-800">
+              <h3 className="text-xs font-black text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Users className="w-4 h-4" />
+                <span>Ayudantes de Camión ({helpers.length})</span>
+              </h3>
+
+              <form
+                onSubmit={handleAddHlp}
+                className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex gap-2"
+              >
+                <input
+                  type="text"
+                  required
+                  placeholder="Nombre del Ayudante (Ej: José, Miguel, Pedro...)"
+                  value={newHelperName}
+                  onChange={(e) => setNewHelperName(e.target.value)}
+                  className="flex-grow bg-slate-800 text-white px-3 py-2 rounded-xl border border-slate-700 font-semibold"
+                />
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition flex items-center gap-1 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Agregar Ayudante</span>
+                </button>
+              </form>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {helpers.map((hlp) => (
+                  <div
+                    key={hlp}
+                    className="bg-slate-800/90 border border-slate-700/80 rounded-2xl p-3 flex items-center justify-between gap-2"
+                  >
+                    <span className="font-extrabold text-sm text-indigo-300">👷 {hlp}</span>
+                    {helpers.length > 1 && (
+                      <button
+                        onClick={() => deleteHelper(hlp)}
+                        className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
-        {/* Tab 5: RESET & CLEAR TO ZERO */}
+        {/* Tab 6: RESET & CLEAR TO ZERO */}
         {activeTab === 'reset' && (
           <div className="space-y-4 overflow-y-auto pr-1 flex-grow text-xs">
             {resetSuccessMessage && (
@@ -550,15 +741,19 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                     </div>
                     <div>
                       <h3 className="text-sm font-black text-white">Poner Todo en Cero</h3>
-                      <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">Modo Operación Real</span>
+                      <span className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">
+                        Modo Operación Real
+                      </span>
                     </div>
                   </div>
                   <p className="text-slate-400 text-xs leading-relaxed">
-                    Elimina todos los pedidos de prueba actuales ({orders.length} pedidos) y reinicia los contadores de unidades a 0 para que puedas empezar a cargar los despachos reales.
+                    Elimina todos los pedidos de prueba actuales ({orders.length} pedidos) y reinicia los contadores de unidades y horas extras a 0 para que puedas empezar tu jornada real.
                   </p>
                   <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 text-[11px] text-slate-300 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Tus destinos, productos, calibres y choferes se mantendrán intactos.</span>
+                    <span>
+                      Tus destinos, productos, colores de Aluzinc, calibres, choferes y ayudantes se mantendrán intactos.
+                    </span>
                   </div>
                 </div>
 
@@ -566,7 +761,9 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                   type="button"
                   onClick={() => {
                     clearAllToZero({ resetRoutes: true });
-                    setResetSuccessMessage('¡Sistema puesto en CERO con éxito! Listo para despachos reales.');
+                    setResetSuccessMessage(
+                      '¡Sistema puesto en CERO con éxito! Listo para despachos reales.'
+                    );
                     setTimeout(() => setResetSuccessMessage(null), 3000);
                   }}
                   className="w-full py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-black rounded-xl transition shadow-md flex items-center justify-center gap-2 active:scale-95"
@@ -585,11 +782,13 @@ export const CatalogSettingsModal: React.FC<CatalogSettingsModalProps> = ({
                     </div>
                     <div>
                       <h3 className="text-sm font-black text-white">Cargar Datos de Demostración</h3>
-                      <span className="text-[10px] text-sky-400 font-bold uppercase tracking-wider">Modo Ejemplo / Pruebas</span>
+                      <span className="text-[10px] text-sky-400 font-bold uppercase tracking-wider">
+                        Modo Ejemplo / Pruebas
+                      </span>
                     </div>
                   </div>
                   <p className="text-slate-400 text-xs leading-relaxed">
-                    Restaura un conjunto de órdenes y rutas de ejemplo con choferes (Carlos, Danilo, Nelson) para practicar el uso del tablero y las funciones de la app.
+                    Restaura un conjunto de órdenes de ejemplo con colores de Aluzinc, fechas de despacho y horas extras para practicar el uso del tablero.
                   </p>
                 </div>
 

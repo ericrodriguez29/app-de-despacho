@@ -9,12 +9,16 @@ import {
   History,
   Plus,
   Minus,
-  Check,
   Zap,
-  Tag,
+  Calendar,
 } from 'lucide-react';
 import { Order } from '../types/dispatch';
 import { useDispatch } from '../context/DispatchContext';
+import {
+  getColorSwatch,
+  formatDispatchDate,
+  formatOvertimeDuration,
+} from '../data/initialData';
 
 interface QuickUnloadModeProps {
   onOpenConfirmation: (order: Order) => void;
@@ -34,7 +38,6 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
     activeDriverFilter,
     setActiveDriverFilter,
     advanceOrderStatus,
-    quickVerifyUnits,
     quickVerifyItemUnits,
     updateRouteDeparture,
     updateRouteArrival,
@@ -73,10 +76,14 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                 <span className="text-xs font-black text-amber-400 uppercase tracking-widest bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
                   Modo Chofer & Descarga Rápida
                 </span>
-                <span className="text-xs text-slate-400 font-mono">Uso Rápido</span>
+                {activeRoute?.helper && activeRoute.helper !== 'Sin Ayudante' && (
+                  <span className="text-xs text-indigo-300 bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-500/30 font-bold">
+                    👷 Ayudante: {activeRoute.helper}
+                  </span>
+                )}
               </div>
               <h2 className="text-lg md:text-xl font-black text-white mt-0.5">
-                Panel de Descarga en Rampa &bull; Conteo de Unidades
+                Panel de Descarga en Rampa &bull; Colores, Unidades y Horas Extras
               </h2>
             </div>
           </div>
@@ -106,35 +113,35 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
 
         {/* Route Timetable bar */}
         {activeRoute && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800 text-xs">
             <div className="flex items-center justify-between sm:justify-start gap-2">
-              <span className="text-slate-400 font-bold">Ruta / Zona:</span>
-              <span className="text-sky-400 font-black truncate max-w-[170px]">{activeRoute.name}</span>
+              <span className="text-slate-400 font-bold">Ruta:</span>
+              <span className="text-sky-400 font-black truncate max-w-[150px]">{activeRoute.name}</span>
             </div>
 
             {/* Salida Almacén */}
             <div className="flex items-center justify-between sm:justify-start gap-2">
-              <span className="text-slate-400 font-bold">Salida Almacén:</span>
+              <span className="text-slate-400 font-bold">Hora Salida:</span>
               {activeRoute.actualDeparture ? (
                 <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                  {activeRoute.actualDeparture} (Prog: {activeRoute.scheduledDeparture})
+                  {activeRoute.actualDeparture}
                 </span>
               ) : (
                 <button
                   onClick={() => updateRouteDeparture(activeRoute.id)}
                   className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-[11px] transition shadow-md"
                 >
-                  Registrar Salida Ahora
+                  Registrar Salida
                 </button>
               )}
             </div>
 
             {/* Llegada Fin de Ruta */}
             <div className="flex items-center justify-between sm:justify-start gap-2">
-              <span className="text-slate-400 font-bold">Llegada/Fin:</span>
+              <span className="text-slate-400 font-bold">Hora Llegada:</span>
               {activeRoute.actualArrival ? (
                 <span className="text-emerald-400 font-mono font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                  {activeRoute.actualArrival} (Prog: {activeRoute.scheduledArrival})
+                  {activeRoute.actualArrival}
                 </span>
               ) : (
                 <button
@@ -146,9 +153,17 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                       : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                   }`}
                 >
-                  Registrar Llegada/Fin
+                  Registrar Llegada
                 </button>
               )}
+            </div>
+
+            {/* Horas Extras */}
+            <div className="flex items-center justify-between sm:justify-start gap-2">
+              <span className="text-slate-400 font-bold">Hora Extra:</span>
+              <span className="text-amber-300 font-mono font-black">
+                {formatOvertimeDuration(activeRoute.driverOvertimeMinutes)}
+              </span>
             </div>
           </div>
         )}
@@ -182,7 +197,9 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
         {currentStops.length === 0 ? (
           <div className="bg-slate-900/60 border border-dashed border-slate-800 rounded-3xl p-6 text-center text-slate-400 space-y-2">
             <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto opacity-70" />
-            <p className="text-sm font-bold text-slate-300">No hay paradas en descarga en este instante.</p>
+            <p className="text-sm font-bold text-slate-300">
+              No hay paradas en descarga en este instante.
+            </p>
             <p className="text-xs text-slate-500">
               Despacha una parada de la lista pendiente para iniciar el proceso de conteo y entrega.
             </p>
@@ -199,7 +216,7 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                 {/* Header with Stop # and Client */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="px-3 py-1 bg-amber-500 text-slate-950 font-black text-xs rounded-xl shadow-md">
                         PARADA #{idx + 1}
                       </span>
@@ -208,6 +225,10 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                       </span>
                       <span className="text-xs font-bold text-sky-300 bg-sky-950/60 px-2.5 py-0.5 rounded-lg border border-sky-500/20">
                         📍 {order.zone}
+                      </span>
+                      <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>{formatDispatchDate(order.dispatchDate)}</span>
                       </span>
                     </div>
                     <h4 className="text-xl font-black text-white mt-1">{order.client}</h4>
@@ -234,22 +255,37 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                     </div>
                   </div>
 
-                  {/* Multi-product items chips */}
+                  {/* Multi-product items chips with Aluzinc color */}
                   <div className="pt-2 border-t border-slate-800 space-y-1.5">
                     <span className="text-[10px] text-slate-400 uppercase font-black tracking-wider block">
-                      Desglose de Productos en este Envío:
+                      Desglose de Productos y Colores de Aluzinc en este Envío:
                     </span>
                     <div className="flex flex-wrap gap-1.5">
-                      {order.items.map((it) => (
-                        <div
-                          key={it.id}
-                          className="bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-xl flex items-center gap-1.5 text-[11px]"
-                        >
-                          <span className="text-amber-300 font-bold">{it.unitsCount} uds</span>
-                          <span className="text-white font-semibold">{it.productType}</span>
-                          {it.calibre && <span className="text-slate-400 font-mono text-[10px]">({it.calibre})</span>}
-                        </div>
-                      ))}
+                      {order.items.map((it) => {
+                        const swatch = getColorSwatch(it.color);
+                        return (
+                          <div
+                            key={it.id}
+                            className="bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-xl flex items-center gap-1.5 text-[11px]"
+                          >
+                            <span className="text-amber-300 font-bold">{it.unitsCount} uds</span>
+                            <span className="text-white font-semibold">{it.productType}</span>
+                            {swatch.isApplicable && (
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${swatch.badgeClass}`}
+                              >
+                                <span className={`w-2 h-2 rounded-full ${swatch.dotClass}`} />
+                                {it.color}
+                              </span>
+                            )}
+                            {it.calibre && (
+                              <span className="text-slate-400 font-mono text-[10px]">
+                                ({it.calibre})
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -285,7 +321,8 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                             Conteo de Unidades en Rampa
                           </span>
                           <span className="text-xs text-slate-300">
-                            Total programado: <strong className="text-white">{order.unitsCount} unidades</strong>
+                            Total programado:{' '}
+                            <strong className="text-white">{order.unitsCount} unidades</strong>
                           </span>
                         </div>
                       </div>
@@ -293,7 +330,9 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                       <div className="flex items-baseline gap-2 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800">
                         <span className="text-xs font-bold text-slate-400">Verificadas:</span>
                         <span className="text-2xl font-black text-amber-400">{verifiedUnits}</span>
-                        <span className="text-xs font-bold text-slate-400">/ {order.unitsCount}</span>
+                        <span className="text-xs font-bold text-slate-400">
+                          / {order.unitsCount}
+                        </span>
                       </div>
                     </div>
 
@@ -301,21 +340,40 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                     <div className="space-y-2">
                       {order.items.map((it) => {
                         const itemDelivered = it.unitsDelivered ?? it.unitsCount;
+                        const swatch = getColorSwatch(it.color);
                         return (
                           <div
                             key={it.id}
                             className="bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2 text-xs"
                           >
                             <div>
-                              <span className="text-white font-bold">{it.productType}</span>
-                              {it.calibre && <span className="text-slate-400 font-mono text-[10px] ml-1">({it.calibre})</span>}
-                              <span className="text-[10px] text-slate-500 block">Prog: {it.unitsCount} uds</span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="text-white font-bold">{it.productType}</span>
+                                {swatch.isApplicable && (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${swatch.badgeClass}`}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full ${swatch.dotClass}`} />
+                                    {it.color}
+                                  </span>
+                                )}
+                                {it.calibre && (
+                                  <span className="text-slate-400 font-mono text-[10px]">
+                                    ({it.calibre})
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-500 block">
+                                Prog: {it.unitsCount} uds
+                              </span>
                             </div>
 
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => quickVerifyItemUnits(order.id, it.id, itemDelivered - 1)}
+                                onClick={() =>
+                                  quickVerifyItemUnits(order.id, it.id, itemDelivered - 1)
+                                }
                                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-90 flex items-center justify-center"
                               >
                                 <Minus className="w-3.5 h-3.5" />
@@ -325,7 +383,9 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => quickVerifyItemUnits(order.id, it.id, itemDelivered + 1)}
+                                onClick={() =>
+                                  quickVerifyItemUnits(order.id, it.id, itemDelivered + 1)
+                                }
                                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold border border-slate-700 active:scale-90 flex items-center justify-center"
                               >
                                 <Plus className="w-3.5 h-3.5" />
@@ -342,7 +402,9 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                       className="w-full mt-2 py-4 bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-sm rounded-2xl shadow-xl shadow-emerald-500/30 transition flex items-center justify-center gap-2 active:scale-95 border border-emerald-400/30"
                     >
                       <CheckCircle2 className="w-5 h-5" />
-                      <span>CONFIRMAR ENTREGA &bull; CONCLUIR DESCARGA ({verifiedUnits} UDS)</span>
+                      <span>
+                        CONFIRMAR ENTREGA &bull; CONCLUIR DESCARGA ({verifiedUnits} UDS)
+                      </span>
                     </button>
                   </div>
                 )}
@@ -383,7 +445,12 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
               >
                 <div>
                   <div className="flex justify-between items-start">
-                    <span className="font-mono text-xs font-black text-sky-400">{order.id}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-black text-sky-400">{order.id}</span>
+                      <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">
+                        📅 {formatDispatchDate(order.dispatchDate)}
+                      </span>
+                    </div>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">
                       {order.priority}
                     </span>
@@ -394,11 +461,23 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                     📦 {order.unitsCount} unidades combinadas
                   </p>
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {order.items.map((it) => (
-                      <span key={it.id} className="text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded">
-                        {it.unitsCount} {it.productType}
-                      </span>
-                    ))}
+                    {order.items.map((it) => {
+                      const swatch = getColorSwatch(it.color);
+                      return (
+                        <span
+                          key={it.id}
+                          className="text-[10px] bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded flex items-center gap-1"
+                        >
+                          <strong>{it.unitsCount}</strong> {it.productType}
+                          {swatch.isApplicable && (
+                            <span className="inline-flex items-center gap-1 text-sky-300 font-bold">
+                              <span className={`w-1.5 h-1.5 rounded-full ${swatch.dotClass}`} />
+                              {it.color}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -440,9 +519,12 @@ export const QuickUnloadMode: React.FC<QuickUnloadModeProps> = ({
                       {order.unitsDelivered ?? order.unitsCount} uds entregadas
                     </span>
                   </div>
-                  <h4 className="font-bold text-xs text-white mt-1">{order.client} ({order.zone})</h4>
+                  <h4 className="font-bold text-xs text-white mt-1">
+                    {order.client} ({order.zone})
+                  </h4>
                   <p className="text-[11px] text-slate-400 line-clamp-1">
-                    {order.itemsDescription || order.items.map((it) => `${it.unitsCount} ${it.productType}`).join(', ')}
+                    {order.itemsDescription ||
+                      order.items.map((it) => `${it.unitsCount} ${it.productType}`).join(', ')}
                   </p>
                 </div>
 

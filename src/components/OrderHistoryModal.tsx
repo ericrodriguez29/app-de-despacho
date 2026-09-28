@@ -2,17 +2,20 @@ import React from 'react';
 import {
   History,
   X,
-  MapPin,
   Clock,
   User,
   Boxes,
-  CheckCircle2,
   Printer,
   ShieldCheck,
   Tag,
-  Layers,
+  Calendar,
 } from 'lucide-react';
 import { Order, OrderStatus } from '../types/dispatch';
+import {
+  getColorSwatch,
+  formatDispatchDate,
+  formatOvertimeDuration,
+} from '../data/initialData';
 
 interface OrderHistoryModalProps {
   order: Order | null;
@@ -88,18 +91,24 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
         {/* Header */}
         <div className="flex justify-between items-start border-b border-slate-800 pb-4 shrink-0">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-xs font-black text-sky-400 bg-sky-950/80 px-2.5 py-1 rounded-xl border border-sky-500/30">
                 {order.id}
               </span>
               <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
                 📍 {order.zone}
               </span>
+              <span className="text-xs font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                <span>Fecha Despacho: {formatDispatchDate(order.dispatchDate)}</span>
+              </span>
             </div>
             <h2 className="text-lg sm:text-xl font-black text-white mt-1">
               Historial Detallado de Estados & Trazabilidad
             </h2>
-            <p className="text-xs text-slate-400">Cliente: <strong className="text-slate-200">{order.client}</strong></p>
+            <p className="text-xs text-slate-400">
+              Cliente: <strong className="text-slate-200">{order.client}</strong>
+            </p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -126,40 +135,69 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
             <span className="text-amber-400 font-black text-sm">{order.unitsCount} unidades</span>
           </div>
           <div>
-            <span className="text-slate-500 font-bold block">Tipos de Producto:</span>
-            <span className="text-white font-bold text-sm">{order.items.length} productos</span>
-          </div>
-          <div>
-            <span className="text-slate-500 font-bold block">Chofer Asignado:</span>
+            <span className="text-slate-500 font-bold block">Chofer y Ayudante:</span>
             <span className="text-amber-300 font-bold">🚛 {order.driver}</span>
+            {order.helper && order.helper !== 'Sin Ayudante' && (
+              <span className="text-indigo-300 font-bold block text-[11px]">
+                👷 {order.helper}
+              </span>
+            )}
           </div>
           <div>
-            <span className="text-slate-500 font-bold block">Hora Salida / Entrega:</span>
+            <span className="text-slate-500 font-bold block">Salida / Llegada:</span>
             <span className="text-sky-300 font-mono font-bold">
-              {order.dispatchedAt ? order.dispatchedAt.slice(11, 16) : 'Pendiente'} &bull; {order.deliveredAt ? order.deliveredAt.slice(11, 16) : 'En ruta'}
+              {order.departureTime || (order.dispatchedAt ? order.dispatchedAt.slice(11, 16) : '--:--')}{' '}
+              &rarr;{' '}
+              {order.arrivalTime || (order.deliveredAt ? order.deliveredAt.slice(11, 16) : '--:--')}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-500 font-bold block">Horas Extras:</span>
+            <span className="text-amber-300 font-mono font-bold block">
+              Ch: {formatOvertimeDuration(order.driverOvertimeMinutes)}
+            </span>
+            <span className="text-indigo-300 font-mono font-bold text-[11px]">
+              Ay: {formatOvertimeDuration(order.helperOvertimeMinutes)}
             </span>
           </div>
         </div>
 
-        {/* Itemized breakdown box */}
+        {/* Itemized breakdown box with Aluzinc color */}
         <div className="bg-slate-950/90 border border-slate-800 p-3.5 rounded-2xl space-y-2 shrink-0 text-xs">
           <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider block">
-            Productos y Cantidades en este Envío:
+            Productos, Colores de Aluzinc y Cantidades en este Envío:
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {order.items.map((it) => (
-              <div
-                key={it.id}
-                className="bg-slate-900 border border-slate-700/80 p-2 rounded-xl flex items-center justify-between text-xs"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span className="text-white font-bold">{it.productType}</span>
-                  {it.calibre && <span className="text-slate-400 font-mono text-[10px]">({it.calibre})</span>}
+            {order.items.map((it) => {
+              const swatch = getColorSwatch(it.color);
+              return (
+                <div
+                  key={it.id}
+                  className="bg-slate-900 border border-slate-700/80 p-2 rounded-xl flex items-center justify-between text-xs gap-2"
+                >
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="text-white font-bold">{it.productType}</span>
+                    {swatch.isApplicable && (
+                      <span
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${swatch.badgeClass}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${swatch.dotClass}`} />
+                        {it.color}
+                      </span>
+                    )}
+                    {it.calibre && (
+                      <span className="text-slate-400 font-mono text-[10px]">
+                        ({it.calibre})
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-amber-300 font-mono font-black shrink-0">
+                    {it.unitsCount} uds
+                  </span>
                 </div>
-                <span className="text-amber-300 font-mono font-black">{it.unitsCount} uds</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -188,14 +226,17 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
                   <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 space-y-2.5 shadow-md group-hover:border-sky-500/40 transition">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                       <div className="flex items-center gap-2">
-                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${badge.bg}`}>
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-lg border ${badge.bg}`}
+                        >
                           {entry.statusLabel}
                         </span>
-                        {entry.durationFromPrevMinutes !== undefined && entry.durationFromPrevMinutes > 0 && (
-                          <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-700">
-                            ⏱️ +{entry.durationFromPrevMinutes} min
-                          </span>
-                        )}
+                        {entry.durationFromPrevMinutes !== undefined &&
+                          entry.durationFromPrevMinutes > 0 && (
+                            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-700">
+                              ⏱️ +{entry.durationFromPrevMinutes} min
+                            </span>
+                          )}
                       </div>
 
                       <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
@@ -213,7 +254,9 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700/50 text-[11px] text-slate-400">
                       <span className="flex items-center gap-1">
                         <User className="w-3 h-3 text-slate-500" />
-                        <span>Responsable: <strong className="text-slate-300">{entry.updatedBy}</strong></span>
+                        <span>
+                          Responsable: <strong className="text-slate-300">{entry.updatedBy}</strong>
+                        </span>
                       </span>
 
                       {entry.unitsVerified !== undefined && (
@@ -246,11 +289,15 @@ export const OrderHistoryModal: React.FC<OrderHistoryModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-300 pt-1">
               <div>
                 <span className="text-slate-400 text-[11px] block">Unidades Entregadas:</span>
-                <strong className="text-amber-300 text-sm">{order.unitsDelivered ?? order.unitsCount} unidades</strong>
+                <strong className="text-amber-300 text-sm">
+                  {order.unitsDelivered ?? order.unitsCount} unidades
+                </strong>
               </div>
               <div>
                 <span className="text-slate-400 text-[11px] block">Tiempo de Descarga:</span>
-                <strong className="text-sky-300 text-sm">{order.unloadingDurationMinutes ? `${order.unloadingDurationMinutes} min` : 'Normal'}</strong>
+                <strong className="text-sky-300 text-sm">
+                  {order.unloadingDurationMinutes ? `${order.unloadingDurationMinutes} min` : 'Normal'}
+                </strong>
               </div>
             </div>
           </div>
